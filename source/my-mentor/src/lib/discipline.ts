@@ -15,6 +15,8 @@ export type DiscConfig = {
   /** Nudge spacing in minutes while active (15, 30 or 60). */
   nudgeEvery: 15 | 30 | 60;
   nudgesOn: boolean;
+  /** Language of nudges: Hindi, English, or both (Hindi then English). */
+  nudgeLang: 'hi' | 'en' | 'both';
   workDays: number[]; // 0 = Sunday … 6 = Saturday
 };
 
@@ -25,6 +27,7 @@ export const DEFAULT_CONFIG: DiscConfig = {
   eveningCheckin: '21:30',
   detoxCutoff: '22:30',
   nudgeEvery: 30,
+  nudgeLang: 'both',
   nudgesOn: false, // opt-in: turned on from Settings so nobody is nudged without choosing it
   workDays: [1, 2, 3, 4, 5, 6],
 };
@@ -37,7 +40,7 @@ const row = (cols: Collections, id: string) => {
 export function configOf(cols: Collections): DiscConfig {
   const r = row(cols, 'cfg:disc');
   if (!r) return DEFAULT_CONFIG;
-  const { role, waterTarget, wakeTarget, eveningCheckin, detoxCutoff, nudgeEvery, nudgesOn, workDays } = r as Record<string, unknown>;
+  const { role, waterTarget, wakeTarget, eveningCheckin, detoxCutoff, nudgeEvery, nudgesOn, nudgeLang, workDays } = r as Record<string, unknown>;
   return {
     role: role === 'priya' ? 'priya' : 'arpan',
     waterTarget: typeof waterTarget === 'number' && waterTarget > 0 ? Math.min(20, waterTarget) : DEFAULT_CONFIG.waterTarget,
@@ -46,6 +49,7 @@ export function configOf(cols: Collections): DiscConfig {
     detoxCutoff: typeof detoxCutoff === 'string' ? detoxCutoff : DEFAULT_CONFIG.detoxCutoff,
     nudgeEvery: nudgeEvery === 15 || nudgeEvery === 60 ? nudgeEvery : 30,
     nudgesOn: nudgesOn === true,
+    nudgeLang: nudgeLang === 'hi' || nudgeLang === 'en' ? nudgeLang : 'both',
     workDays: Array.isArray(workDays) ? (workDays as number[]) : DEFAULT_CONFIG.workDays,
   };
 }

@@ -37,6 +37,12 @@ export function DisciplineSettings() {
         <Chip label="Arpan" selected={cfg.role === 'arpan'} onPress={() => save({ role: 'arpan' })} />
         <Chip label="Priya" selected={cfg.role === 'priya'} onPress={() => save({ role: 'priya' })} />
       </View>
+      <T variant="caption">Language / भाषा</T>
+      <View style={s.chips}>
+        {([['hi', 'हिन्दी'], ['en', 'English'], ['both', 'Both / दोनों']] as const).map(([v, label]) => (
+          <Chip key={v} label={label} selected={cfg.nudgeLang === v} onPress={() => save({ nudgeLang: v })} />
+        ))}
+      </View>
       <View style={s.between}>
         <View style={{ flex: 1 }}>
           <T variant="body">Din bhar ke nudges (6 AM–11 PM)</T>

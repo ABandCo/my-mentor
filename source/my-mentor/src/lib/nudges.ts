@@ -1,26 +1,32 @@
-// Nudge engine: short Hinglish one-liners, one action each, written in a "Chanakya" voice (honest, strategic, not harsh).
-// Pure and template-based so it works in the background with no AI call; the AI only refreshes the template pool when the app opens.
-// Arpan and Priya have separate pools and separate rules. A nudge is never sent outside 06:00–23:00 IST.
+// Nudge engine: short one-liners in Hindi, English or both, in Krishna's voice (a guru + today's Chanakya: honest, strategic, not harsh).
+// Pure and template-based so it works in the background with no AI call. Arpan and Priya have separate pools and rules.
+// A nudge is never produced outside 06:00–23:00 IST. Sundays have their own plan (no rest: each other, billing, gyaan, content).
 import type { DiscConfig, Role } from './discipline';
+import type { L } from './wisdom';
 
-export type Slot = 'wake' | 'morning' | 'afternoon' | 'evening' | 'night';
+export type NudgeLang = 'hi' | 'en' | 'both';
+export type Slot = 'morning' | 'afternoon' | 'evening' | 'night';
 export type Nudge = { id: string; role: Role; slot: Slot; title: string; body: string; route: string };
 
 export type NudgeCtx = {
   role: Role;
+  lang?: NudgeLang;
   hour: number; // IST 0..23
   minute: number;
-  name?: string;
+  weekday?: number; // 0 = Sunday (IST)
   oneThing?: string;
   oneThingDone?: boolean;
   openToday: number; // pending planner items + commitments due today
   firstPending?: string;
   waterGlasses: number;
   waterTarget: number;
-  /** Priya only: set when she has answered the two mandatory questions today. */
-  discussedWithArpan?: boolean;
-  delegatingToday?: boolean;
 };
+
+type T = { id: string; slot: Slot; title: L; body: L; route: string };
+
+/** Pick the language(s). "both" shows Hindi then English on a new line. */
+export const say = (l: L, lang: NudgeLang = 'both') => (lang === 'hi' ? l.hi : lang === 'en' ? l.en : `${l.hi}\n${l.en}`);
+const sayTitle = (l: L, lang: NudgeLang) => (lang === 'hi' ? l.hi : lang === 'en' ? l.en : `${l.hi} · ${l.en}`);
 
 export const slotOf = (hour: number): Slot | null => {
   if (hour < 6 || hour >= 23) return null;
@@ -31,73 +37,90 @@ export const slotOf = (hour: number): Slot | null => {
 };
 
 const short = (s: string | undefined, n = 40) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : (s ?? ''));
+const T = (id: string, slot: Slot, title: L, body: L, route = '/'): T => ({ id, slot, title, body, route });
 
 // ---------- Arpan ----------
-function arpanPool(c: NudgeCtx): Omit<Nudge, 'role'>[] {
-  const slot = slotOf(c.hour);
-  if (!slot) return [];
+function arpanPool(c: NudgeCtx, slot: Slot): T[] {
   const one = short(c.oneThing);
-  const water = c.waterGlasses < Math.ceil(c.waterTarget * Math.min(1, (c.hour - 5) / 16))
-    ? [{ id: 'a-water', slot, title: 'Paani 💧', body: `${c.waterGlasses}/${c.waterTarget} glass hue. Ek glass abhi, phir kaam.`, route: '/' }]
-    : [];
-  const morning: Omit<Nudge, 'role'>[] = [
-    { id: 'a-m1', slot: 'morning', title: 'Pehle kaam', body: c.oneThing && !c.oneThingDone ? `"${one}": pehle 25 minute, phone door.` : 'Aaj ka One Thing likho. 1 line, abhi.', route: '/' },
-    { id: 'a-m2', slot: 'morning', title: 'Client / GST', body: c.firstPending ? `Pehle yeh: ${short(c.firstPending)}. Baaki baad mein.` : 'Pehla client/GST kaam chuno aur 25 minute lagao.', route: '/planner' },
-    { id: 'a-m3', slot: 'morning', title: 'Execute', body: 'Doosron ko motivate karne se pehle apna kaam. Pehle tu ship kar.', route: '/' },
-  ];
-  const afternoon: Omit<Nudge, 'role'>[] = [
-    { id: 'a-a1', slot: 'afternoon', title: 'Timesheet', body: 'Aaj ka time log bhara? 2 minute, abhi.', route: '/work' },
-    { id: 'a-a2', slot: 'afternoon', title: 'Billing', body: 'Aaj kitna bill kiya? Target 10–50 hazaar/din ka hai, ek invoice nikalo.', route: '/work' },
-    { id: 'a-a3', slot: 'afternoon', title: 'AI se leverage', body: 'Ye drafting AI se karwao. Tera time sirf review ke liye hai.', route: '/mentor' },
-    { id: 'a-a4', slot: 'afternoon', title: 'Agle 15 minute', body: 'Kya yeh agla 15 minute sabse best use hai? Nahi, toh abhi badlo.', route: '/' },
-  ];
-  const evening: Omit<Nudge, 'role'>[] = [
-    { id: 'a-e1', slot: 'evening', title: 'Kuch meaningful banao', body: 'Ek content post ya product idea ka 20 minute. Scroll nahi, build.', route: '/grow' },
-    { id: 'a-e2', slot: 'evening', title: 'Networking', body: 'Ek dost/client ko call ya dinner ka plan karo. Network hi net worth hai.', route: '/' },
-    { id: 'a-e3', slot: 'evening', title: 'Chanakya kehte hain', body: 'Samay ka sahi upyog hi sabse bada dhan hai. Aaj ka kaam aaj.', route: '/' },
-    { id: 'a-e4', slot: 'evening', title: 'Comerze / AI', body: c.openToday > 0 ? `${c.openToday} kaam baaki. Ek khatam karo, phir build.` : 'Aaj ka kaam ho gaya. Ab Comerze ya AI product ka agla chhota step.', route: '/grow' },
-  ];
-  const night: Omit<Nudge, 'role'>[] = [
-    { id: 'a-n1', slot: 'night', title: 'Detox', body: 'Screen band karne ka waqt. Kal ka din aaj se behtar banega, agar abhi sone gaye.', route: '/' },
-  ];
-  const pool = slot === 'morning' ? morning : slot === 'afternoon' ? afternoon : slot === 'evening' ? evening : night;
-  return [...pool, ...water];
+  const water: T[] =
+    c.waterGlasses < Math.ceil(c.waterTarget * Math.min(1, (c.hour - 5) / 16))
+      ? [T('a-water', slot, { en: 'Water 💧', hi: 'पानी 💧' }, { en: `${c.waterGlasses}/${c.waterTarget} glasses. One glass now, then work.`, hi: `${c.waterGlasses}/${c.waterTarget} गिलास। अभी एक गिलास, फिर काम।` })]
+      : [];
+  const pools: Record<Slot, T[]> = {
+    morning: [
+      T('a-m1', 'morning', { en: 'First task', hi: 'पहला काम' }, c.oneThing && !c.oneThingDone ? { en: `"${one}": first 25 minutes, phone away.`, hi: `"${one}": पहले 25 मिनट, फ़ोन दूर।` } : { en: 'Write today’s One Thing. One line, now.', hi: 'आज का One Thing लिखो। एक पंक्ति, अभी।' }),
+      T('a-m2', 'morning', { en: 'Client / GST', hi: 'क्लाइंट / GST' }, c.firstPending ? { en: `This first: ${short(c.firstPending)}. Rest later.`, hi: `पहले यह: ${short(c.firstPending)}। बाकी बाद में।` } : { en: 'Pick the first client/GST task and give it 25 minutes.', hi: 'पहला क्लाइंट/GST काम चुनो और 25 मिनट दो।' }, '/planner'),
+      T('a-m3', 'morning', { en: 'Execute', hi: 'अमल करो' }, { en: 'Before motivating others, do your own work. Ship first.', hi: 'दूसरों को प्रेरित करने से पहले अपना काम करो। पहले पूरा करो।' }),
+    ],
+    afternoon: [
+      T('a-a1', 'afternoon', { en: 'Timesheet', hi: 'टाइमशीट' }, { en: 'Today’s time log filled? 2 minutes, now.', hi: 'आज का टाइम लॉग भरा? 2 मिनट, अभी।' }, '/work'),
+      T('a-a2', 'afternoon', { en: 'Billing', hi: 'बिलिंग' }, { en: 'How much billed today? Target is ₹10–50k a day. Raise one invoice.', hi: 'आज कितना बिल किया? लक्ष्य रोज़ ₹10–50 हज़ार। एक इनवॉइस बनाओ।' }, '/work'),
+      T('a-a3', 'afternoon', { en: 'AI leverage', hi: 'AI का लाभ' }, { en: 'Let AI do the first draft. Your time is for review.', hi: 'पहला ड्राफ़्ट AI से बनवाओ। तुम्हारा समय सिर्फ़ समीक्षा के लिए है।' }, '/mentor'),
+      T('a-a4', 'afternoon', { en: 'Next 15 minutes', hi: 'अगले 15 मिनट' }, { en: 'Is this the best use of the next 15 minutes? If not, switch now.', hi: 'क्या अगले 15 मिनट का यही सबसे अच्छा उपयोग है? नहीं, तो अभी बदलो।' }),
+    ],
+    evening: [
+      T('a-e1', 'evening', { en: 'Build something', hi: 'कुछ सार्थक बनाओ' }, { en: '20 minutes on a content post or product idea. Build, don’t scroll.', hi: 'कंटेंट पोस्ट या प्रोडक्ट आइडिया पर 20 मिनट। स्क्रॉल नहीं, निर्माण।' }, '/work'),
+      T('a-e2', 'evening', { en: 'Networking', hi: 'नेटवर्किंग' }, { en: 'Call a friend or client, or plan a dinner meet. Network is net worth.', hi: 'किसी मित्र/क्लाइंट को फ़ोन करो या डिनर प्लान करो। नेटवर्क ही नेटवर्थ है।' }),
+      T('a-e3', 'evening', { en: 'Chanakya’s lesson', hi: 'चाणक्य की सीख' }, { en: 'Time well spent is the real wealth. Today’s work, today.', hi: 'सही उपयोग हुआ समय ही असली धन है। आज का काम आज।' }),
+      T('a-e4', 'evening', { en: 'Comerze / AI', hi: 'Comerze / AI' }, c.openToday > 0 ? { en: `${c.openToday} tasks left. Finish one, then build.`, hi: `${c.openToday} काम बाकी। एक पूरा करो, फिर निर्माण।` } : { en: 'Today’s tasks done. Next small step on Comerze or an AI product.', hi: 'आज के काम पूरे। अब Comerze या AI प्रोडक्ट का अगला छोटा कदम।' }, '/work'),
+    ],
+    night: [T('a-n1', 'night', { en: 'Detox', hi: 'डिटॉक्स' }, { en: 'Time to switch off screens. Tomorrow beats today if you sleep now.', hi: 'स्क्रीन बंद करने का समय। अभी सोओगे तो कल आज से बेहतर होगा।' })],
+  };
+  return [...pools[slot], ...water];
 }
 
 // ---------- Priya ----------
-// Rules (from the owner's brief): every message names Arpan, states the two mandatory questions (discussed with Arpan?
-// delegating or working alone?), praises first, and teaches "kaam karna nahi, karwana hai". Hindi/Hinglish, kind and firm.
-// Health lines are honest and gentle: no weight talk, no scare tactics, no body comments.
-const PRIYA_TAIL = 'Arpan se baat hui? Aaj kaam karwa rahi ho ya akeli kar rahi ho?';
-function priyaPool(c: NudgeCtx): Omit<Nudge, 'role'>[] {
-  const slot = slotOf(c.hour);
-  if (!slot) return [];
-  const t = (s: string) => `${s} ${PRIYA_TAIL}`;
-  const morning: Omit<Nudge, 'role'>[] = [
-    { id: 'p-m1', slot: 'morning', title: 'Aap bahut accha kar rahi ho 🌸', body: t('Aaj ek kaam kisi aur ko saunp do aur check karo. Manager banna hai, typewriter nahi.'), route: '/couple' },
-    { id: 'p-m2', slot: 'morning', title: 'Subah ki shuruaat', body: t('10 minute walk ya gehri saans abhi. Aapki sehat hi aapki team ki taakat hai.'), route: '/couple' },
-  ];
-  const afternoon: Omit<Nudge, 'role'>[] = [
-    { id: 'p-a1', slot: 'afternoon', title: 'Kaam karna nahi, karwana hai', body: t('Jo kaam roz aap khud karti ho, usme se ek kaam kisi ko do aur shaam ko check karo.'), route: '/couple' },
-    { id: 'p-a2', slot: 'afternoon', title: 'Shabaash!', body: t('Ghar aur bachchon ko sambhalna bada kaam hai, aap acchi ho. Ab thoda bada socho: aapka partner-level kaam kya hai?'), route: '/couple' },
-  ];
-  const evening: Omit<Nudge, 'role'>[] = [
-    { id: 'p-e1', slot: 'evening', title: 'Bachchon ke saath quality time', body: t('Aaj bachchon ko 20 minute poora dhyan diya? Phone door, bas saath.'), route: '/couple' },
-    { id: 'p-e2', slot: 'evening', title: 'Arpan ke saath 10 minute', body: t('Aaj Arpan ko time diya? Din ke kaam aur kal ki planning par 10 minute baat karo.'), route: '/couple' },
-    { id: 'p-e3', slot: 'evening', title: 'Aise hi chalta raha toh?', body: t('Accha kar rahi ho, par sirf kaam karte rehne se kal kuch nahi badlega. Ek kaam delegate karo.'), route: '/couple' },
-  ];
-  const night: Omit<Nudge, 'role'>[] = [
-    { id: 'p-n1', slot: 'night', title: 'Aaj ka din', body: t('Aaj jo accha kiya uspar garv karo. Kal ek aur kaam delegate karenge.'), route: '/couple' },
-  ];
-  return slot === 'morning' ? morning : slot === 'afternoon' ? afternoon : slot === 'evening' ? evening : night;
+// Rules: every message names Arpan, asks the two mandatory questions (discussed with Arpan? delegating or working alone?),
+// praises first, and teaches "kaam karna nahi, karwana hai". Health lines are honest and gentle: no weight talk, no scare tactics.
+const TAIL: L = { en: 'Discussed with Arpan? Delegating today, or working alone?', hi: 'अर्पण से बात हुई? आज काम करवा रही हो या अकेले कर रही हो?' };
+const withTail = (l: L): L => ({ en: `${l.en} ${TAIL.en}`, hi: `${l.hi} ${TAIL.hi}` });
+function priyaPool(_c: NudgeCtx, slot: Slot): T[] {
+  const p: Record<Slot, T[]> = {
+    morning: [
+      T('p-m1', 'morning', { en: 'You are doing well 🌸', hi: 'आप बहुत अच्छा कर रही हो 🌸' }, withTail({ en: 'Hand one task to someone today and check it. Be the manager, not the typewriter.', hi: 'आज एक काम किसी को सौंपो और जाँचो। मैनेजर बनो, टाइपराइटर नहीं।' }), '/couple'),
+      T('p-m2', 'morning', { en: 'Start of the day', hi: 'दिन की शुरुआत' }, withTail({ en: '10-minute walk or deep breaths now. Your health is your team’s strength.', hi: 'अभी 10 मिनट टहलो या गहरी साँसें लो। आपकी सेहत ही आपकी टीम की ताक़त है।' }), '/couple'),
+    ],
+    afternoon: [
+      T('p-a1', 'afternoon', { en: 'Get it done, don’t do it', hi: 'काम करना नहीं, करवाना है' }, withTail({ en: 'Pick one daily task you do yourself, hand it over, and check it in the evening.', hi: 'रोज़ का एक काम जो खुद करती हो, किसी को दो और शाम को जाँचो।' }), '/couple'),
+      T('p-a2', 'afternoon', { en: 'Well done!', hi: 'शाबाश!' }, withTail({ en: 'Running the home and children is big work. Now think bigger: what is your partner-level work?', hi: 'घर और बच्चों को सँभालना बड़ा काम है। अब बड़ा सोचो: आपका पार्टनर-स्तर का काम क्या है?' }), '/couple'),
+    ],
+    evening: [
+      T('p-e1', 'evening', { en: 'Time with the children', hi: 'बच्चों के साथ समय' }, withTail({ en: 'Give the children 20 full minutes today. Phone away, just be with them.', hi: 'आज बच्चों को पूरे 20 मिनट दो। फ़ोन दूर, बस उनके साथ।' }), '/couple'),
+      T('p-e2', 'evening', { en: '10 minutes with Arpan', hi: 'अर्पण के साथ 10 मिनट' }, withTail({ en: 'Did you give Arpan time today? Talk 10 minutes about today and tomorrow’s plan.', hi: 'आज अर्पण को समय दिया? आज और कल की योजना पर 10 मिनट बात करो।' }), '/couple'),
+      T('p-e3', 'evening', { en: 'If it stays like this?', hi: 'अगर ऐसे ही चलता रहा?' }, withTail({ en: 'You are doing well, but only staying busy will not change tomorrow. Delegate one task.', hi: 'आप अच्छा कर रही हो, पर सिर्फ़ व्यस्त रहने से कल नहीं बदलेगा। एक काम सौंपो।' }), '/couple'),
+    ],
+    night: [T('p-n1', 'night', { en: 'Today’s account', hi: 'आज का हिसाब' }, withTail({ en: 'Be proud of what you did well today. Tomorrow we delegate one more task.', hi: 'आज जो अच्छा किया उस पर गर्व करो। कल एक और काम सौंपेंगे।' }), '/couple')],
+  };
+  return p[slot];
+}
+
+// ---------- Sunday: no rest, but a different day ----------
+// Each other (talk, assess the week), billing, gyaan (podcast/book), content created with AI and scheduled for the weekdays.
+function sundayPool(c: NudgeCtx, slot: Slot): T[] {
+  const priya = c.role === 'priya';
+  const wrap = (l: L) => (priya ? withTail(l) : l);
+  const h = c.hour;
+  if (h < 12)
+    return [T('s-talk', slot, { en: 'Sunday: time for each other', hi: 'रविवार: एक-दूसरे के लिए समय' }, wrap({ en: 'No rest today. Sit together 30 minutes: talk, and assess the past week honestly.', hi: 'आज आराम नहीं। 30 मिनट साथ बैठो: बात करो और पिछले हफ़्ते का ईमानदार आकलन करो।' }), '/couple')];
+  if (h < 15)
+    return [T('s-bill', slot, { en: 'Billing sitting', hi: 'बिलिंग की बैठक' }, wrap(priya ? { en: 'Sit with Arpan for billing: which invoices are pending and who follows up?', hi: 'अर्पण के साथ बिलिंग पर बैठो: कौन से इनवॉइस बाकी हैं और फ़ॉलो-अप कौन करेगा?' } : { en: 'Sit for billing: raise every pending invoice, list the follow-ups.', hi: 'बिलिंग पर बैठो: हर बाकी इनवॉइस बनाओ, फ़ॉलो-अप की सूची बनाओ।' }), '/work')];
+  if (h < 18)
+    return [T('s-content', slot, { en: 'Make the week’s content', hi: 'हफ़्ते का कंटेंट बनाओ' }, wrap({ en: 'Use Claude/AI to draft 3 posts now and schedule them for the weekdays.', hi: 'अभी Claude/AI से 3 पोस्ट बनवाओ और हफ़्ते के दिनों के लिए शेड्यूल करो।' }), '/work')];
+  if (h < 22)
+    return [T('s-gyaan', slot, { en: 'Gyaan time', hi: 'ज्ञान का समय' }, wrap({ en: 'Watch one podcast or read one chapter together. Write one takeaway each.', hi: 'साथ में एक पॉडकास्ट देखो या एक अध्याय पढ़ो। हर कोई एक सीख लिखे।' }), '/grow')];
+  return [];
 }
 
 /** Deterministic pick so the same quarter-hour always gives the same line, and consecutive lines differ. */
 export function pickNudge(c: NudgeCtx): Nudge | null {
-  const pool = c.role === 'priya' ? priyaPool(c) : arpanPool(c);
+  const slot = slotOf(c.hour);
+  if (!slot) return null;
+  const lang = c.lang ?? 'both';
+  const sunday = c.weekday === 0 ? sundayPool(c, slot) : [];
+  const pool = sunday.length ? sunday : c.role === 'priya' ? priyaPool(c, slot) : arpanPool(c, slot);
   if (!pool.length) return null;
-  const idx = (c.hour * 4 + Math.floor(c.minute / 15)) % pool.length;
-  return { ...pool[idx], role: c.role };
+  const t = pool[(c.hour * 4 + Math.floor(c.minute / 15)) % pool.length];
+  return { id: t.id, role: c.role, slot: t.slot, title: sayTitle(t.title, lang), body: say(t.body, lang), route: t.route };
 }
 
 // ---------- Adaptive spacing ----------
@@ -119,31 +142,46 @@ export function nudgeTimes(gap: number, fromMin = 6 * 60, toMin = 23 * 60): numb
 }
 
 // ---------- Wake push (Arpan) ----------
-export function lateWakeLine(time: string, lateMin: number): string | null {
+export function lateWakeLine(time: string, lateMin: number, lang: NudgeLang = 'both'): string | null {
   if (lateMin < 30) return null;
-  return `Aaj ${time} baje uthe. Kal ka din mushkil hoga agar aaj bhi aise gaya. Pehla kaam: 10 min, abhi.`;
+  return say({ en: `You woke at ${time} today. If today goes like this, tomorrow will be harder. First task: 10 minutes, now.`, hi: `आज ${time} बजे उठे। अगर आज भी ऐसे ही गया तो कल मुश्किल होगा। पहला काम: 10 मिनट, अभी।` }, lang);
 }
 
 // ---------- Night: why wasn't it done ----------
-/** Evening accountability line from what is still pending (used for the 21:00+ notification and Krishna's opening line). */
-export function eveningAccountability(role: Role, pending: string[], oneThingDone: boolean): { title: string; body: string } {
-  if (role === 'priya')
-    return {
-      title: 'Aaj ka hisaab',
-      body: pending.length
-        ? `${pending.length} kaam baaki hain. Kya Arpan se baat hui aur kisi ko saunpa? Manager ki tarah check karo, khud mat karo.`
-        : 'Aaj sab ho gaya, shabaash! Arpan ko bhi batao. Kal ek aur kaam delegate karo.',
-    };
-  if (!pending.length && oneThingDone) return { title: 'Aaj ka hisaab', body: 'One Thing ho gaya. Ab kal ka One Thing abhi likh do.' };
+export function eveningAccountability(role: Role, pending: string[], oneThingDone: boolean, lang: NudgeLang = 'both'): { title: string; body: string } {
+  if (role === 'priya') {
+    const l: L = pending.length
+      ? withTail({ en: `${pending.length} tasks pending. Check like a manager; do not do them yourself.`, hi: `${pending.length} काम बाकी हैं। मैनेजर की तरह जाँचो, खुद मत करो।` })
+      : withTail({ en: 'Everything is done today, well done! Tell Arpan. Delegate one more task tomorrow.', hi: 'आज सब हो गया, शाबाश! अर्पण को बताओ। कल एक और काम सौंपो।' });
+    return { title: sayTitle({ en: 'Today’s account', hi: 'आज का हिसाब' }, lang), body: say(l, lang) };
+  }
+  if (!pending.length && oneThingDone) return { title: sayTitle({ en: 'Today’s account', hi: 'आज का हिसाब' }, lang), body: say({ en: 'One Thing done. Write tomorrow’s One Thing now.', hi: 'One Thing पूरा हुआ। कल का One Thing अभी लिख दो।' }, lang) };
   return {
-    title: 'Aaj kyun nahi hua?',
-    body: `${pending.length || 'Kuch'} kaam baaki: ${short(pending[0], 30)}. Ek line mein likho kyun. Aise chalta raha toh 10 lakh/month ka target door rahega.`,
+    title: sayTitle({ en: 'Why not today?', hi: 'आज क्यों नहीं हुआ?' }, lang),
+    body: say({ en: `${pending.length || 'Some'} tasks left: ${short(pending[0], 30)}. Write one line on why. If this continues, ₹10 lakh a month stays far.`, hi: `${pending.length || 'कुछ'} काम बाकी: ${short(pending[0], 30)}। एक पंक्ति में लिखो क्यों। ऐसे चलता रहा तो महीने के ₹10 लाख दूर रहेंगे।` }, lang),
   };
 }
 
-/** Time-use check: share of logged minutes that went to advising/motivating others vs billable/building. Returns a flag when the cap is crossed. */
+/** Time-use check: share of logged minutes that went to advising/motivating others. Returns a flag when the cap is crossed. */
 export function timeUseFlag(minutes: { billable: number; building: number; advising: number; other: number }, capPct = 20): { flag: boolean; advisingPct: number } {
   const total = minutes.billable + minutes.building + minutes.advising + minutes.other;
   const advisingPct = total ? Math.round((minutes.advising / total) * 100) : 0;
   return { flag: total >= 60 && advisingPct > capPct, advisingPct };
+}
+
+// ---------- Fixed nightly prompts ----------
+const minus = (hhmm: string, n: number) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = Math.max(0, h * 60 + m - n);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+/** Timesheet + invoicing review after 21:00 (Arpan), evening check-in (both), and a detox warning 10 minutes before the cut-off. */
+export function fixedNotifications(cfg: Pick<DiscConfig, 'role' | 'eveningCheckin' | 'detoxCutoff'>, lang: NudgeLang = 'both') {
+  const out: { time: string; title: string; body: string; route: string; kind: string; days?: number[] }[] = [];
+  const mk = (time: string, kind: string, title: L, body: L, route: string, days?: number[]) => out.push({ time, kind, title: sayTitle(title, lang), body: say(body, lang), route, days });
+  if (cfg.role === 'arpan')
+    mk('21:00', 'timesheet', { en: 'Timesheet & invoicing', hi: 'टाइमशीट और इनवॉइसिंग' }, { en: 'Review today’s timesheet and raise the pending invoice. 5 minutes.', hi: 'आज की टाइमशीट देखो और बाकी इनवॉइस बनाओ। 5 मिनट।' }, '/work', [1, 2, 3, 4, 5, 6]);
+  mk(cfg.eveningCheckin, 'evening', { en: 'Evening check-in', hi: 'शाम का चेक-इन' }, cfg.role === 'priya' ? withTail({ en: 'What did you do well today? One line.', hi: 'आज क्या अच्छा किया? एक पंक्ति।' }) : { en: 'Detox-free today? What did you ship? What fixes tomorrow?', hi: 'आज डिटॉक्स रहा? क्या पूरा किया? कल क्या सुधारोगे?' }, '/');
+  mk(minus(cfg.detoxCutoff, 10), 'detox', { en: 'Screens off soon', hi: 'स्क्रीन जल्द बंद' }, { en: 'Detox cut-off in 10 minutes. Close the day well.', hi: 'डिटॉक्स में 10 मिनट बचे। दिन को अच्छे से बंद करो।' }, '/');
+  return out;
 }

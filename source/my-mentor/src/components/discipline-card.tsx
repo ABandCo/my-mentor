@@ -15,6 +15,8 @@ import { dateKey, istHour, streaks } from '@/lib/metrics';
 import { lateWakeLine } from '@/lib/nudges';
 import { notifyNow } from '@/lib/notifications';
 import { useStore } from '@/lib/store';
+import { dayOfYear, lessonFor } from '@/lib/wisdom';
+import { say } from '@/lib/nudges';
 import { colors, radius, space } from '@/theme/tokens';
 
 const SLEEP_CHIPS = [
@@ -46,6 +48,34 @@ export function WaterRow({ compact }: { compact?: boolean }) {
   );
 }
 
+export function LessonRow({ lang, today }: { lang: 'hi' | 'en' | 'both'; today: string }) {
+  const l = lessonFor(dayOfYear(today));
+  return (
+    <View style={{ gap: 4 }}>
+      <T variant="label">KRISHNA KI SEEKH · {l.source.toUpperCase()}</T>
+      <T variant="body">{say(l.idea, lang)}</T>
+      <T variant="caption">▶ {say(l.action, lang)}</T>
+    </View>
+  );
+}
+
+const SUNDAY = [
+  { en: '9:00 Time for each other: talk, assess the week', hi: '9:00 एक-दूसरे के लिए समय: बात करो, हफ़्ते का आकलन' },
+  { en: '12:00 Billing sitting: raise pending invoices', hi: '12:00 बिलिंग की बैठक: बाकी इनवॉइस बनाओ' },
+  { en: '15:00 Content with AI: draft posts, schedule for weekdays', hi: '15:00 AI से कंटेंट: पोस्ट बनाओ, हफ़्ते के लिए शेड्यूल करो' },
+  { en: '18:00 Gyaan: one podcast or chapter together', hi: '18:00 ज्ञान: साथ में एक पॉडकास्ट या अध्याय' },
+];
+export function SundayRow({ lang }: { lang: 'hi' | 'en' | 'both' }) {
+  return (
+    <View style={{ gap: 4 }}>
+      <T variant="label">RAVIVAR · AARAM NAHI, SAATH MEIN BADHNA</T>
+      {SUNDAY.map((x) => (
+        <T key={x.en} variant="caption">• {say(x, lang === 'both' ? 'hi' : lang)}</T>
+      ))}
+    </View>
+  );
+}
+
 export function DisciplineCard() {
   const { state, dispatch } = useStore();
   const cols = state.collections;
@@ -63,7 +93,7 @@ export function DisciplineCard() {
     if (!state.hydrated || !shouldRecordWake(cols)) return;
     const time = clockIst();
     dispatch({ type: 'col/put', table: 'journal_entries', row: wakeRow(today, time) });
-    const line = lateWakeLine(time, lateByMin(time, cfg.wakeTarget));
+    const line = lateWakeLine(time, lateByMin(time, cfg.wakeTarget), cfg.nudgeLang);
     if (line && Platform.OS !== 'web' && cfg.role === 'arpan') notifyNow('Uthne ka time', line).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.hydrated]);
@@ -103,7 +133,7 @@ export function DisciplineCard() {
       {wake ? (
         <View style={{ gap: 6 }}>
           <T variant="body">⏰ Aaj uthe: {wake.time}{late >= 30 ? ` · target ${cfg.wakeTarget}, ${late} min late` : ' · on time ✓'}</T>
-          {late >= 30 ? <T variant="caption" style={{ color: colors.firmText }}>{lateWakeLine(wake.time, late)}</T> : null}
+          {late >= 30 ? <T variant="caption" style={{ color: colors.firmText }}>{lateWakeLine(wake.time, late, cfg.nudgeLang)}</T> : null}
           {!wake.sleptAt ? (
             <View style={{ gap: 6 }}>
               <T variant="caption">Kal raat kab soye?</T>
@@ -118,6 +148,9 @@ export function DisciplineCard() {
           )}
         </View>
       ) : null}
+
+      <LessonRow lang={cfg.nudgeLang} today={today} />
+      {new Date(Date.now() + 330 * 60000).getUTCDay() === 0 ? <SundayRow lang={cfg.nudgeLang} /> : null}
 
       <Button kind="gold" label="▶ Abhi 10 minute ka kaam shuru karo" onPress={() => router.push('/planner')} />
 

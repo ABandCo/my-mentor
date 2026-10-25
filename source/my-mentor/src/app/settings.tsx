@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IconButton, Pill, ProgressBar, Row, ScreenHeader } from '@/components/kit';
+import { CalendarCard } from '@/components/calendar-card';
 import { DisciplineSettings } from '@/components/discipline-settings';
 import { NotificationCard } from '@/components/notification-card';
 import { Button, Card, Chip, T } from '@/components/ui';
@@ -139,6 +140,7 @@ export default function Settings() {
         {/* Reminders */}
         <NotificationCard />
         <DisciplineSettings />
+        <CalendarCard />
 
         {/* Privacy and feel */}
         <Card style={{ gap: space(1.25) }}>

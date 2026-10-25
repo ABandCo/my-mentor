@@ -42,6 +42,7 @@ export const TIME_CATEGORIES = [
   { key: 'admin', label: 'Admin & data entry', delegable: true },
   { key: 'filing', label: 'Routine filings & uploads', delegable: true },
   { key: 'followup', label: 'Document chasing & follow-up calls', delegable: true },
+  { key: 'advising', label: 'Advising / motivating others (unbilled)', delegable: false },
   { key: 'learning', label: 'Learning', delegable: false },
   { key: 'other', label: 'Other', delegable: false },
 ] as const;
@@ -73,6 +74,23 @@ export function delegationAdvice(sum: ReturnType<typeof timeSummary>): string[] 
   if (top && top.minutes > 0) out.push(`Biggest block: ${top.label} (${Math.round((top.minutes / sum.total) * 100)}%).`);
   if (!out.length) out.push('No delegable work logged. Good: keep tagging routine tasks so patterns show up.');
   return out;
+}
+
+/**
+ * "Spent versus built" for a window. Billable = client work + review; Building = business development + learning
+ * (+ minutes you tag as building elsewhere); Drain = admin, filing, chasing, unbilled advising and other.
+ * Advising share is flagged when it crosses `capPct` of logged time (needs at least 60 logged minutes).
+ */
+export function spentVsBuilt(entries: TimeEntry[], today: string, days = 7, capPct = 20) {
+  const sum = timeSummary(entries, today, days);
+  const m = (...k: string[]) => sum.by.filter((c) => k.includes(c.key)).reduce((a, c) => a + c.minutes, 0);
+  const billable = m('client', 'review');
+  const building = m('bd', 'learning');
+  const advising = m('advising');
+  const drain = m('admin', 'filing', 'followup', 'advising', 'other');
+  const total = billable + building + drain;
+  const advisingPct = total ? Math.round((advising / total) * 100) : 0;
+  return { billable, building, drain, advising, total, advisingPct, advisingOverCap: total >= 60 && advisingPct > capPct, buildPct: total ? Math.round((building / total) * 100) : 0 };
 }
 
 // ---------- compliance calendar ----------

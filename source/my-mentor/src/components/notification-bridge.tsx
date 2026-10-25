@@ -6,7 +6,7 @@ import { AppState, Platform } from 'react-native';
 
 import { liveRows } from '@/lib/collections';
 import { configOf, waterOn } from '@/lib/discipline';
-import { nudgeGap, pickNudge } from '@/lib/nudges';
+import { fixedNotifications, nudgeGap, pickNudge } from '@/lib/nudges';
 import { dateKey, istHour } from '@/lib/metrics';
 import { reschedule } from '@/lib/notifications';
 import type { PlanExtras } from '@/lib/notification-plan';
@@ -33,18 +33,20 @@ export function extrasFrom(s: ReturnType<typeof useStore>['state']): PlanExtras 
     ignored++;
   }
   const cfg = configOf(s.collections);
-  if (!cfg.nudgesOn) return { events, ignoredRecent: ignored };
+  const fixed = fixedNotifications(cfg, cfg.nudgeLang);
+  if (!cfg.nudgesOn) return { events, ignoredRecent: ignored, fixed };
   const one = s.oneThing[today];
   const open = liveRows(s.collections, 'planner_items').filter((r) => r.date === today && !r.done);
   const onStreak = !!one?.done && ignored === 0;
   return {
     events,
     ignoredRecent: ignored,
+    fixed,
     nudges: {
       gapMin: nudgeGap(cfg, ignored, onStreak),
-      line: (hour, minute) => {
+      line: (hour, minute, weekday) => {
         const n = pickNudge({
-          role: cfg.role, hour, minute, oneThing: one?.text, oneThingDone: one?.done, openToday: open.length,
+          role: cfg.role, lang: cfg.nudgeLang, hour, minute, weekday, oneThing: one?.text, oneThingDone: one?.done, openToday: open.length,
           firstPending: open[0] ? String(open[0].title ?? '') : undefined, waterGlasses: waterOn(s.collections, today), waterTarget: cfg.waterTarget,
         });
         return n && { title: n.title, body: n.body, route: n.route };

@@ -25,7 +25,9 @@ export type PlanExtras = {
   /** How many of the most recent past hourly check-ins today were left unanswered. */
   ignoredRecent?: number;
   /** Adaptive 6 AM–11 PM nudges (opt-in). `line` returns the text for a given IST hour/minute, or null for none. */
-  nudges?: { gapMin: number; line: (hour: number, minute: number) => { title: string; body: string; route: string } | null };
+  /** Fixed daily notifications (timesheet review, evening check-in, detox). `days` limits by weekday (0 = Sunday). */
+  fixed?: { time: string; title: string; body: string; route: string; kind: string; days?: number[] }[];
+  nudges?: { gapMin: number; line: (hour: number, minute: number, weekday: number) => { title: string; body: string; route: string } | null };
 };
 
 export type Planned = { at: Date; title: string; body: string; data: Record<string, string>; category?: string };
@@ -86,6 +88,17 @@ export function planNotifications(p: Profile, s: NotifSettings, now = new Date()
     if (ok(eAt, evening))
       out.push({ at: eAt, title: 'Evening review 🌙', body: 'Two minutes: what got done today, and what is tomorrow’s One Thing?', data: { kind: 'evening', day } });
   }
+  for (const f of x.fixed ?? []) {
+    for (let i = 0; i < DAYS; i++) {
+      const day = dateKey(new Date(now.getTime() + i * 86400000));
+      const wd = new Date(`${day}T12:00:00+05:30`).getUTCDay();
+      if (f.days && !f.days.includes(wd)) continue;
+      const m = toMin(f.time);
+      const at = istDate(day, m);
+      if (ok(at, m)) out.push({ at, title: f.title, body: f.body, data: { kind: f.kind, day, route: f.route } });
+    }
+  }
+
   // Adaptive nudges: today and tomorrow only (a short horizon keeps the scheduled count low and the content fresh).
   if (x.nudges) {
     const gap = x.nudges.gapMin;
@@ -96,7 +109,7 @@ export function planNotifications(p: Profile, s: NotifSettings, now = new Date()
         if (!ok(at, m)) continue;
         // Skip a slot that sits within 10 minutes of another planned notification, so two never arrive together.
         if (out.some((o) => Math.abs(o.at.getTime() - at.getTime()) < 10 * 60000)) continue;
-        const line = x.nudges.line(Math.floor(m / 60), m % 60);
+        const line = x.nudges.line(Math.floor(m / 60), m % 60, new Date(`${day}T12:00:00+05:30`).getUTCDay());
         if (line) out.push({ at, title: line.title, body: line.body, data: { kind: 'nudge', day, route: line.route } });
       }
     }

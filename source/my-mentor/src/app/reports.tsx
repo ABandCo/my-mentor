@@ -10,6 +10,7 @@ import { HBar } from '@/components/charts';
 import { IconButton, Pill, ProgressBar, ScreenHeader, Segmented, Sheet, StatTile } from '@/components/kit';
 import { Button, Card, ProgressRing, SectionTitle, T } from '@/components/ui';
 import { configOf, detoxStreak, waterStreak, waterTotals } from '@/lib/discipline';
+import { spentVsBuilt, timeOf } from '@/lib/business';
 import { dateKey, level } from '@/lib/metrics';
 import { buildReport, reportHtml, type ReportKind } from '@/lib/reports';
 import { BADGES, earnedKeys, newlyEarned, weeklyWins } from '@/lib/rewards';
@@ -126,6 +127,26 @@ export default function Reports() {
               <T variant="body">💧 Is hafte {waterTotals(state.collections, today).week} glass · 30 din mein {waterTotals(state.collections, today).month}</T>
               <T variant="caption">Water streak {waterStreak(state.collections, configOf(state.collections).waterTarget, today)} din · Detox-free streak {detoxStreak(state.collections, today)} din</T>
             </Card>
+            {(() => {
+              const sb = spentVsBuilt(timeOf(state.collections), today, 7);
+              const h = (m: number) => `${Math.round((m / 60) * 10) / 10} h`;
+              return (
+                <Card style={{ gap: 6 }}>
+                  <T variant="label">SPENT VS BUILT · 7 DIN</T>
+                  {sb.total === 0 ? (
+                    <T variant="caption">Time log nahi bhara. Work & Business mein minutes daalo.</T>
+                  ) : (
+                    <>
+                      <HBar label="Billable" value={sb.billable} max={sb.total} color={colors.primary} right={h(sb.billable)} />
+                      <HBar label="Building" value={sb.building} max={sb.total} color={colors.accent} right={h(sb.building)} />
+                      <HBar label="Drain" value={sb.drain} max={sb.total} color={colors.firm} right={h(sb.drain)} />
+                      <T variant="caption">Billable {h(sb.billable)} · Building {h(sb.building)} ({sb.buildPct}%) · Drain {h(sb.drain)}</T>
+                      {sb.advisingOverCap ? <T variant="caption" style={{ color: colors.firmText }}>Doosron ko advise/motivate karne mein {sb.advisingPct}% time gaya (cap 20%). Isse ghatao: pehle apna kaam.</T> : null}
+                    </>
+                  )}
+                </Card>
+              );
+            })()}
             <SectionTitle title="Habits" />
             {r.habits.map((h) => (
               <HBar key={h.name} label={`${h.emoji}  ${h.name}`} value={h.pct ?? 0} color={colors.primary} right={h.pct === null ? 'no data' : `${h.pct}% · ${h.done}/${h.eligible}`} />
