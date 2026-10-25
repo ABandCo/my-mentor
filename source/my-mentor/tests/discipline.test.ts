@@ -318,3 +318,20 @@ test('Arpan lines: billing pace, due person, morning question', () => {
   for (let m = 0; m < 60; m += 15) for (let h = 6; h < 12; h++) am.push(pickNudge({ ...base, hour: h, minute: m })!.body);
   assert.ok(am.some((b) => /Which client or GST task comes first/.test(b)));
 });
+
+test('server copy of the nudge engine is up to date (run: node scripts/sync-nudge-copy.mjs)', async () => {
+  const { build } = await import('../scripts/sync-nudge-copy.mjs');
+  const { readFileSync } = await import('node:fs');
+  assert.equal(readFileSync(new URL('../supabase/functions/nudge/nudges.ts', import.meta.url), 'utf8'), build());
+});
+
+test('the mentor server keeps the discipline context (role drives Krishna’s voice) and describes Krishna as guru + Chanakya', async () => {
+  const { filterContext, buildSystemPrompt } = await import('../supabase/functions/mentor/prompt.ts');
+  assert.deepEqual(filterContext({ discipline: { role: 'priya' }, secret: 1 }, ['plans']), { discipline: { role: 'priya' } });
+  assert.deepEqual(filterContext({ discipline: { role: 'priya' } }, []), {});
+  const p = buildSystemPrompt({ style: 'strict', lang: 'hinglish', mode: 'chat' });
+  assert.match(p, /Chanakya Niti of today's world/);
+  assert.match(p, /traditionally attributed/);
+  assert.match(p, /Never mention her weight/);
+  assert.match(p, /Tele-MANAS 14416/, 'crisis resources stay in the prompt');
+});

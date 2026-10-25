@@ -42,3 +42,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase client config (added by you, not committed)
+google-services.json

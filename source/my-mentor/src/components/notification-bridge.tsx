@@ -11,6 +11,7 @@ import { dueContacts, peopleOf } from '@/lib/network';
 import { fixedNotifications, nudgeGap, pickNudge } from '@/lib/nudges';
 import { dateKey, istHour } from '@/lib/metrics';
 import { reschedule } from '@/lib/notifications';
+import { registerPush, touchPush } from '@/lib/push';
 import type { PlanExtras } from '@/lib/notification-plan';
 import { HourStatus, useStore } from '@/lib/store';
 
@@ -35,6 +36,7 @@ export function extrasFrom(s: ReturnType<typeof useStore>['state']): PlanExtras 
     ignored++;
   }
   const cfg = configOf(s.collections);
+  if (s.notif.serverPush) return { events, ignoredRecent: ignored }; // the server sends nudges and fixed prompts
   const fixed = fixedNotifications(cfg, cfg.nudgeLang);
   if (!cfg.nudgesOn) return { events, ignoredRecent: ignored, fixed };
   const one = s.oneThing[today];
@@ -63,7 +65,7 @@ export function extrasFrom(s: ReturnType<typeof useStore>['state']): PlanExtras 
 }
 
 export function NotificationBridge({ children }: { children: ReactNode }) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, session } = useStore();
   const [sched, setSched] = useState<Sched>({ count: 0 });
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -82,11 +84,28 @@ export function NotificationBridge({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.hydrated, p.onboardedAt, p.wake, p.sleep, p.intensiveStart, p.intensiveEnd, p.quietStart, p.quietEnd, n.enabled, n.pausedUntil, n.preEvent, n.weeklyReview, n.followUp, n.easeOff, evCount, state.collections.journal_entries?.['cfg:disc']?.updatedAt]);
+  }, [state.hydrated, p.onboardedAt, p.wake, p.sleep, p.intensiveStart, p.intensiveEnd, p.quietStart, p.quietEnd, n.enabled, n.pausedUntil, n.preEvent, n.weeklyReview, n.followUp, n.easeOff, n.serverPush, evCount, state.collections.journal_entries?.['cfg:disc']?.updatedAt]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => st === 'active' && refresh());
     return () => sub.remove();
   }, [refresh]);
+
+  // Server nudges: register this phone when signed in (and nudges are on). On every foreground tell the server the app was opened.
+  const uidNow = session?.user.id;
+  const nudgesOn = configOf(state.collections).nudgesOn;
+  useEffect(() => {
+    if (!state.hydrated || !uidNow || Platform.OS === 'web') return;
+    let live = true;
+    (async () => {
+      const ok = nudgesOn ? await registerPush(uidNow) : false;
+      if (live && ok !== !!stateRef.current.notif.serverPush) dispatch({ type: 'setNotif', notif: { serverPush: ok } });
+    })();
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && touchPush(uidNow));
+    return () => {
+      live = false;
+      sub.remove();
+    };
+  }, [state.hydrated, uidNow, nudgesOn, dispatch]);
 
   // Handle taps on notifications and their Done / Partly / Missed buttons (including cold start).
   useEffect(() => {

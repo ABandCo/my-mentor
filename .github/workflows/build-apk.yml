@@ -1,0 +1,33 @@
+# One-click Android build for My Mentor. Run it from GitHub: Actions tab -> "Build Android APK" -> Run workflow.
+# It sends the build to Expo's servers; the finished APK link appears on https://expo.dev (your project "my-mentor").
+# One-time setup: add a repository secret named EXPO_TOKEN (steps in source/my-mentor/docs/BUILD_AND_PUSH_STEPS.md).
+name: Build Android APK
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile (preview = APK you can install; play = Play Store bundle)'
+        default: preview
+        type: choice
+        options: [preview, play, play-test-apk]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source/my-mentor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check the secret exists
+        run: test -n "$EXPO_TOKEN" || (echo "EXPO_TOKEN secret is missing. See docs/BUILD_AND_PUSH_STEPS.md" && exit 1)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - run: npm test
+      - name: Start the cloud build
+        run: npx --yes eas-cli@latest build --platform android --profile "${{ inputs.profile }}" --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

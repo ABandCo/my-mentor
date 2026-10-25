@@ -1,6 +1,6 @@
 // "mentor" Edge Function: the only place the Gemini key lives.
 // Flow: verify user -> check consent + daily cap -> mask private details -> call Gemini -> validate -> count usage.
-// Content is never logged; only metadata (mode, model, token counts, timing).
+// Content is never logged; only metadata (mode, model, token counts, timing, and Google's own error status text).
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import { CRISIS_REPLY, detectCrisis } from './crisis.ts';
@@ -55,10 +55,29 @@ const tooFast = (uid: string) => {
 const todayIST = () => new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
 
 type GeminiOk = { ok: true; text: string; model: string; tokensIn: number; tokensOut: number };
-type GeminiFail = { ok: false; code: 'ai_unconfigured' | 'ai_quota' | 'ai_unavailable'; status?: number };
+type GeminiFail = { ok: false; code: 'ai_unconfigured' | 'ai_quota' | 'ai_unavailable'; status?: number; detail?: string };
+
+/** Google's own error status and message, shortened, with anything key-shaped removed. Never contains user text. */
+async function googleError(r: Response): Promise<string> {
+  let t = '';
+  try {
+    t = await r.text();
+  } catch {
+    return `http ${r.status}`;
+  }
+  let msg = t;
+  try {
+    const j = JSON.parse(t);
+    msg = `${j?.error?.status ?? ''}: ${j?.error?.message ?? ''}`;
+  } catch {
+    /* keep raw text */
+  }
+  return `http ${r.status} ${msg}`.replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[key]').replace(/\s+/g, ' ').slice(0, 300);
+}
 
 async function callGemini(key: string, system: string, contents: unknown, json: boolean, maxTokens: number): Promise<GeminiOk | GeminiFail> {
   let sawQuota = false;
+  let lastDetail = '';
   for (const model of MODELS) {
     const body = {
       systemInstruction: { parts: [{ text: system }] },
@@ -74,25 +93,44 @@ async function callGemini(key: string, system: string, contents: unknown, json: 
         signal: AbortSignal.timeout(45000),
       });
     } catch {
+      lastDetail = `${model}: network error or timeout`;
       continue; // network hiccup or timeout: try the next model
     }
     if (r.status === 400) {
-      const t = await r.text();
-      if (/API key not valid|API_KEY_INVALID|api key/i.test(t)) return { ok: false, code: 'ai_unconfigured', status: 400 };
+      const d = await googleError(r);
+      console.log(JSON.stringify({ evt: 'gemini_error', model, detail: d }));
+      lastDetail = `${model}: ${d}`;
+      if (/API key not valid|API_KEY_INVALID|api key expired/i.test(d)) return { ok: false, code: 'ai_unconfigured', status: 400, detail: lastDetail };
       continue;
     }
-    if (r.status === 401 || r.status === 403) return { ok: false, code: 'ai_unconfigured', status: r.status };
+    if (r.status === 401 || r.status === 403) {
+      const d = await googleError(r);
+      console.log(JSON.stringify({ evt: 'gemini_error', model, detail: d }));
+      return { ok: false, code: 'ai_unconfigured', status: r.status, detail: `${model}: ${d}` };
+    }
     if (r.status === 429) {
+      const d = await googleError(r);
+      console.log(JSON.stringify({ evt: 'gemini_error', model, detail: d }));
+      lastDetail = `${model}: ${d}`;
       sawQuota = true;
       continue;
     }
-    if (!r.ok) continue; // 404 (model not on this key) and 5xx: next model
+    if (!r.ok) {
+      const d = await googleError(r);
+      console.log(JSON.stringify({ evt: 'gemini_error', model, detail: d }));
+      lastDetail = `${model}: ${d}`;
+      continue; // 404 (model not on this key) and 5xx: next model
+    }
     const j = await r.json();
     const text = ((j?.candidates?.[0]?.content?.parts ?? []) as { text?: string }[]).map((p) => p.text ?? '').join('').trim();
-    if (!text) continue;
+    if (!text) {
+      lastDetail = `${model}: empty answer (finish: ${j?.candidates?.[0]?.finishReason ?? 'unknown'}, block: ${j?.promptFeedback?.blockReason ?? 'none'})`;
+      console.log(JSON.stringify({ evt: 'gemini_empty', detail: lastDetail }));
+      continue;
+    }
     return { ok: true, text, model, tokensIn: j?.usageMetadata?.promptTokenCount ?? 0, tokensOut: j?.usageMetadata?.candidatesTokenCount ?? 0 };
   }
-  return { ok: false, code: sawQuota ? 'ai_quota' : 'ai_unavailable' };
+  return { ok: false, code: sawQuota ? 'ai_quota' : 'ai_unavailable', detail: lastDetail };
 }
 
 Deno.serve(async (req) => {
@@ -197,8 +235,8 @@ Deno.serve(async (req) => {
   }
 
   if (!res.ok) {
-    console.log(JSON.stringify({ evt: 'mentor', mode, status: res.code, ms: Date.now() - t0 }));
-    return reply({ ok: false, code: res.code, used, cap: DAILY_CAP });
+    console.log(JSON.stringify({ evt: 'mentor', mode, status: res.code, detail: res.detail, ms: Date.now() - t0 }));
+    return reply({ ok: false, code: res.code, detail: res.detail, used, cap: DAILY_CAP });
   }
   if (json && !data) {
     console.log(JSON.stringify({ evt: 'mentor', mode, model: res.model, status: 'bad_format', ms: Date.now() - t0 }));

@@ -19,6 +19,7 @@ export const CATEGORY_OF_KEY: Record<string, Category> = {
   commitments: 'plans',
   goals: 'plans',
   insights: 'plans',
+  discipline: 'plans',
   business: 'work',
   health: 'health',
   journal: 'journal',

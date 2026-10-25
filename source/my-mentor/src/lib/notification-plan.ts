@@ -14,6 +14,8 @@ export type NotifSettings = {
   weeklyReview?: boolean;
   followUp?: boolean;
   easeOff?: boolean;
+  /** True once this phone is registered for server-sent nudges; local adaptive nudges and fixed prompts are then skipped (no doubles). */
+  serverPush?: boolean;
   pausedUntil?: string; // ISO
   pauseLabel?: string;
 };
