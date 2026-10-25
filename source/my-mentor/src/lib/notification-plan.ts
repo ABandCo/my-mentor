@@ -101,10 +101,10 @@ export function planNotifications(p: Profile, s: NotifSettings, now = new Date()
     }
   }
 
-  // Adaptive nudges: today and tomorrow only (a short horizon keeps the scheduled count low and the content fresh).
+  // Adaptive nudges for the next DAYS days (3), scheduled on the phone. Used when server push is not set up.
   if (x.nudges) {
     const gap = x.nudges.gapMin;
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < DAYS; i++) {
       const day = dateKey(new Date(now.getTime() + i * 86400000));
       for (let m = Math.ceil((6 * 60) / gap) * gap; m < 23 * 60; m += gap) {
         const at = istDate(day, m);

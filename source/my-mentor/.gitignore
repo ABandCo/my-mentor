@@ -45,3 +45,8 @@ example
 
 # Firebase client config (added by you, not committed)
 google-services.json
+
+# Signing keys never go in git unless the owner decides so explicitly
+signing/
+*.keystore
+*.jks
