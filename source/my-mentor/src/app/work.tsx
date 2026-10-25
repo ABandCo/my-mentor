@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Bars, HBar } from '@/components/charts';
+import { PeopleCard } from '@/components/people-card';
 import { PipelineCard } from '@/components/pipeline-card';
 import { IconButton, Pill, ScreenHeader, Segmented } from '@/components/kit';
 import { Button, Card, Chip, EmptyState, SectionTitle, T, tap } from '@/components/ui';
@@ -30,6 +31,7 @@ export default function Work() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader title="Work & Business" hi="प्रैक्टिस ग्रोथ" left={<IconButton icon="chevron-back" label="Back" onPress={() => router.back()} />} />
         <PipelineCard />
+        <PeopleCard />
         <View style={styles.wrap}>
           {VENTURES.map((v) => (
             <Chip key={v} label={v} selected={venture === v} onPress={() => setVenture(v)} />

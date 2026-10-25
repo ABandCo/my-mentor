@@ -25,6 +25,15 @@ function TimeField({ label, value, onSave }: { label: string; value: string; onS
   );
 }
 
+const GOALS = [
+  { key: 'gym', label: 'Gym / जिम' },
+  { key: 'walk', label: 'Walk / सैर' },
+  { key: 'breathing', label: 'Breathing / साँस' },
+  { key: 'yoga', label: 'Yoga / योग' },
+  { key: 'eating', label: 'Healthy eating / खान-पान' },
+  { key: 'sleep', label: 'Sleep / नींद' },
+];
+
 export function DisciplineSettings() {
   const { state, dispatch } = useStore();
   const cfg = configOf(state.collections);
@@ -61,6 +70,33 @@ export function DisciplineSettings() {
         {[6, 8, 10].map((g) => (
           <Chip key={g} label={`${g} glass`} selected={cfg.waterTarget === g} onPress={() => save({ waterTarget: g })} />
         ))}
+      </View>
+      {cfg.role === 'priya' ? (
+        <View style={{ gap: 6 }}>
+          <T variant="caption">Mere health goals / मेरे हेल्थ गोल (gym pehle)</T>
+          <View style={s.chips}>
+            {GOALS.map((g) => {
+              const on = cfg.healthGoals.includes(g.key);
+              return <Chip key={g.key} label={g.label} selected={on} onPress={() => save({ healthGoals: on ? cfg.healthGoals.filter((x) => x !== g.key) : [...cfg.healthGoals, g.key] })} />;
+            })}
+          </View>
+        </View>
+      ) : (
+        <View style={{ gap: 6 }}>
+          <T variant="caption">Monthly billing target</T>
+          <View style={s.chips}>
+            {[500000, 1000000, 1500000, 2000000].map((t) => (
+              <Chip key={t} label={`₹${t / 100000}L`} selected={cfg.monthlyTarget === t} onPress={() => save({ monthlyTarget: t })} />
+            ))}
+          </View>
+        </View>
+      )}
+      <View style={s.between}>
+        <View style={{ flex: 1 }}>
+          <T variant="body">Couple Space mein mera daily summary share karo</T>
+          <T variant="caption">Sirf summary (score, paani, One Thing, aadatein, detox). Business numbers ya journal kabhi nahi.</T>
+        </View>
+        <Switch value={cfg.shareSummary} onValueChange={(v) => save({ shareSummary: v })} />
       </View>
       <View style={{ flexDirection: 'row', gap: space(1) }}>
         <TimeField label="Uthne ka target" value={cfg.wakeTarget} onSave={(v) => save({ wakeTarget: v })} />

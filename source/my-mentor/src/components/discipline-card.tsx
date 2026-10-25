@@ -5,13 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Button, Card, Chip, T, tap } from '@/components/ui';
-import { liveRows } from '@/lib/collections';
+import { dayStats } from '@/lib/day-stats';
+import { billingPace, billRow, billedOn, inr } from '@/lib/billing';
+import { uid } from '@/lib/store';
 import {
-  clockIst, configOf, detoxStreak, disciplineScore, eveningOf, eveningRow, lateByMin, shouldRecordWake, wakeOf, wakeRow, waterOn, waterRow, waterStreak,
+  clockIst, configOf, detoxStreak, eveningOf, eveningRow, lateByMin, shouldRecordWake, wakeOf, wakeRow, waterOn, waterRow, waterStreak,
 } from '@/lib/discipline';
-import { isScheduled } from '@/lib/habit-stats';
-import { habitsWithMeta } from '@/lib/habits';
-import { dateKey, istHour, streaks } from '@/lib/metrics';
+import { dateKey, istHour } from '@/lib/metrics';
 import { lateWakeLine } from '@/lib/nudges';
 import { notifyNow } from '@/lib/notifications';
 import { useStore } from '@/lib/store';
@@ -44,6 +44,55 @@ export function WaterRow({ compact }: { compact?: boolean }) {
       </View>
       <Button compact kind="ghost" label="−" onPress={() => set(n - 1)} disabled={n <= 0} />
       <Button compact kind={n >= cfg.waterTarget ? 'primary' : 'soft'} label="+1 glass" onPress={() => set(n + 1)} />
+    </View>
+  );
+}
+
+/** Add a to-do in one line. In the morning Krishna asks "what is the first client/GST task?" and this is where the answer goes. */
+export function QuickAdd({ role }: { role: 'arpan' | 'priya' }) {
+  const { dispatch } = useStore();
+  const [text, setText] = useState('');
+  const today = dateKey();
+  const add = () => {
+    if (!text.trim()) return;
+    tap('success');
+    dispatch({ type: 'col/put', table: 'planner_items', row: { id: uid(), title: text.trim(), date: today, priority: 'high', durationMin: 30, done: false } });
+    setText('');
+  };
+  return (
+    <View style={{ gap: 6 }}>
+      <T variant="label">{role === 'arpan' ? 'PEHLA CLIENT / GST KAAM KYA HAI?' : 'AAJ KA PEHLA ZAROORI KAAM?'}</T>
+      <View style={s.row}>
+        <TextInput value={text} onChangeText={setText} onSubmitEditing={add} placeholder="e.g. SCN reply, client A" placeholderTextColor={colors.muted} style={[s.input, { flex: 1 }]} maxLength={120} returnKeyType="done" />
+        <Button compact kind="soft" label="Add" disabled={!text.trim()} onPress={add} />
+      </View>
+    </View>
+  );
+}
+
+/** Tentative billing for today against the monthly target. */
+export function BillingRow() {
+  const { state, dispatch } = useStore();
+  const cfg = configOf(state.collections);
+  const today = dateKey();
+  const pace = billingPace(state.collections, cfg.monthlyTarget, today);
+  const [text, setText] = useState('');
+  const save = () => {
+    const n = Number(text.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(n) || text.trim() === '') return;
+    tap('success');
+    dispatch({ type: 'col/put', table: 'journal_entries', row: billRow(today, n) });
+    setText('');
+  };
+  return (
+    <View style={{ gap: 6 }}>
+      <T variant="label">BILLING · TENTATIVE (₹)</T>
+      <T variant="body">Aaj {pace.today === null ? 'abhi bhara nahi' : inr(pace.today)} · Is mahine {inr(pace.total)} / {inr(pace.target)} ({pace.pct}%)</T>
+      <T variant="caption">Target ke liye rozana lagbhag {inr(pace.needPerDay)} chahiye ({pace.daysLeft} din baaki).</T>
+      <View style={s.row}>
+        <TextInput value={text} onChangeText={setText} onSubmitEditing={save} keyboardType="numeric" placeholder={pace.today === null ? 'Aaj kitna bill kiya/karoge?' : 'Update karo'} placeholderTextColor={colors.muted} style={[s.input, { flex: 1 }]} maxLength={10} returnKeyType="done" />
+        <Button compact kind="soft" label="Save" disabled={!text.trim()} onPress={save} />
+      </View>
     </View>
   );
 }
@@ -98,21 +147,7 @@ export function DisciplineCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.hydrated]);
 
-  const score = useMemo(() => {
-    const items = liveRows(cols, 'planner_items').filter((r) => r.date === today);
-    const habits = habitsWithMeta(state).filter((h) => isScheduled(h, today));
-    const one = state.oneThing[today];
-    const logs = state.habitLogs[today] ?? {};
-    const planned = items.length + habits.length + (one ? 1 : 0);
-    const done = items.filter((r) => r.done).length + habits.filter((h) => logs[h.id] === 'done').length + (one?.done ? 1 : 0);
-    return disciplineScore({
-      planned,
-      done,
-      streakDays: streaks(state).streak,
-      detoxStreak: detoxStreak(cols, today),
-      waterMet: waterOn(cols, today) >= cfg.waterTarget,
-    });
-  }, [state, cols, today, cfg.waterTarget]);
+  const score = useMemo(() => dayStats(state, today).score, [state, today]);
 
   const late = wake ? lateByMin(wake.time, cfg.wakeTarget) : 0;
   const [eh, em] = cfg.eveningCheckin.split(':').map(Number);
@@ -148,6 +183,9 @@ export function DisciplineCard() {
           )}
         </View>
       ) : null}
+
+      <QuickAdd role={cfg.role} />
+      {cfg.role === 'arpan' ? <BillingRow /> : null}
 
       <LessonRow lang={cfg.nudgeLang} today={today} />
       {new Date(Date.now() + 330 * 60000).getUTCDay() === 0 ? <SundayRow lang={cfg.nudgeLang} /> : null}

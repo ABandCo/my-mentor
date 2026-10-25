@@ -245,3 +245,76 @@ test('calendar: runner calls Google with bearer token and maps 401', async () =>
   assert.deepEqual(calls, ['GET list Bearer TOK', 'POST event Bearer TOK']);
   await assert.rejects(runSync([], 'x', { from: 'a', to: 'b' }, (async () => ({ ok: false, status: 401, json: async () => ({}) })) as any), /calendar_auth/);
 });
+
+import { billRow, billedOn, billingPace, inr } from '../src/lib/billing.ts';
+import { dueContacts, peopleOf, personRow } from '../src/lib/network.ts';
+import { PUSHES, isSummary, summaryId, summaryLine } from '../src/lib/summary.ts';
+
+test('billing: tentative entry, month pace against the target', () => {
+  let c: any = {};
+  c = put(c, billRow('2026-10-10', 100000));
+  c = put(c, billRow('2026-10-20', 250000));
+  c = put(c, billRow('2026-09-30', 999999)); // other month ignored
+  assert.equal(billedOn(c, '2026-10-20'), 250000);
+  assert.equal(billedOn(c, '2026-10-21'), null);
+  const p = billingPace(c, 1000000, '2026-10-25');
+  assert.deepEqual([p.total, p.pct, p.remaining, p.daysLeft], [350000, 35, 650000, 7]); // 25..31 Oct, today not entered
+  assert.equal(p.needPerDay, Math.ceil(650000 / 7));
+  assert.equal(billingPace(put(c, billRow('2026-10-25', 50000)), 1000000, '2026-10-25').daysLeft, 6);
+  assert.equal(billRow('d', -5).amount, 0);
+  assert.deepEqual([inr(950), inr(25000), inr(1000000), inr(12500000)], ['₹950', '₹25k', '₹10L', '₹1.3 Cr']);
+});
+
+test('network: people list and due contacts', () => {
+  let c: any = {};
+  c = put(c, personRow('1', 'Ravi', 14));
+  c = put(c, { ...personRow('2', 'Meera', 7), lastContact: '2026-10-10' });
+  c = put(c, { ...personRow('3', 'Sam', 30), lastContact: '2026-10-20' });
+  const people = peopleOf(c);
+  assert.equal(people.length, 3);
+  const due = dueContacts(people, '2026-10-25');
+  assert.deepEqual(due.map((d) => d.person.name), ['Ravi', 'Meera']); // never contacted first, then most overdue; Sam is not due
+  assert.equal(due[1].daysSince, 15);
+});
+
+test('couple summary + pushes: summary only, own ids, canned pushes in both languages', () => {
+  const s: any = { type: 'daily_summary', date: '2026-10-25', score: 72, water: '5/8', oneThingDone: true, habits: '3/5', detoxFree: null, woke: '06:10' };
+  assert.ok(isSummary(s));
+  assert.ok(!isSummary({ type: 'push' }));
+  assert.equal(summaryId('abcdef1234567890', '2026-10-25'), 'sum:abcdef12:2026-10-25');
+  const l = summaryLine(s, 'Priya');
+  assert.match(l.en, /score 72/);
+  assert.match(l.hi, /स्कोर 72/);
+  assert.doesNotMatch(l.en, /₹|bill/i, 'no business numbers in the shared summary');
+  for (const role of ['arpan', 'priya'] as const) for (const m of PUSHES[role]) assert.ok(m.text.en && m.text.hi);
+});
+
+test('Priya health goals: gym first, asks when empty, client satisfaction line, no weight talk', () => {
+  const base = { openToday: 0, waterGlasses: 8, waterTarget: 8, weekday: 2, minute: 0, lang: 'en' as const, role: 'priya' as const };
+  const seen = new Set<string>();
+  for (let h = 6; h < 23; h++) for (const m of [0, 15, 30, 45]) {
+    const n = pickNudge({ ...base, hour: h, minute: m, healthGoals: ['walk', 'gym'] });
+    if (n) seen.add(n.id);
+  }
+  assert.ok(seen.has('p-h-gym'), 'gym line appears');
+  assert.ok(seen.has('p-client'), 'client satisfaction line appears');
+  const none = new Set<string>();
+  for (let h = 6; h < 23; h++) for (const m of [0, 15, 30, 45]) { const n = pickNudge({ ...base, hour: h, minute: m, healthGoals: [] }); if (n) none.add(n.id); }
+  assert.ok(none.has('p-h-ask'), 'asks her to choose goals');
+  const all = pickNudge({ ...base, hour: 7, minute: 0, healthGoals: ['gym'] })!;
+  assert.match(all.body, /Arpan/);
+});
+
+test('Arpan lines: billing pace, due person, morning question', () => {
+  const base = { openToday: 0, waterGlasses: 8, waterTarget: 8, weekday: 2, minute: 0, lang: 'en' as const, role: 'arpan' as const };
+  const bills = pickNudge({ ...base, hour: 13, minute: 15, billing: { total: 350000, target: 1000000, needPerDay: 92857, todayEntered: false } });
+  const bodies: string[] = [];
+  for (let m = 0; m < 60; m += 15) for (let h = 12; h < 18; h++) bodies.push(pickNudge({ ...base, hour: h, minute: m, billing: { total: 350000, target: 1000000, needPerDay: 92857, todayEntered: false } })!.body);
+  assert.ok(bodies.some((b) => /₹3\.5L of ₹10L.*₹92\.9k a day.*tentative/.test(b)), bills?.body);
+  const ev: string[] = [];
+  for (let m = 0; m < 60; m += 15) for (let h = 18; h < 22; h++) ev.push(pickNudge({ ...base, hour: h, minute: m, duePerson: { name: 'Ravi', days: 20 } })!.body);
+  assert.ok(ev.some((b) => /Ravi: 20 days since you spoke.*strong career/.test(b)));
+  const am: string[] = [];
+  for (let m = 0; m < 60; m += 15) for (let h = 6; h < 12; h++) am.push(pickNudge({ ...base, hour: h, minute: m })!.body);
+  assert.ok(am.some((b) => /Which client or GST task comes first/.test(b)));
+});

@@ -5,7 +5,9 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useRef, u
 import { AppState, Platform } from 'react-native';
 
 import { liveRows } from '@/lib/collections';
+import { billedOn, billingPace } from '@/lib/billing';
 import { configOf, waterOn } from '@/lib/discipline';
+import { dueContacts, peopleOf } from '@/lib/network';
 import { fixedNotifications, nudgeGap, pickNudge } from '@/lib/nudges';
 import { dateKey, istHour } from '@/lib/metrics';
 import { reschedule } from '@/lib/notifications';
@@ -37,6 +39,8 @@ export function extrasFrom(s: ReturnType<typeof useStore>['state']): PlanExtras 
   if (!cfg.nudgesOn) return { events, ignoredRecent: ignored, fixed };
   const one = s.oneThing[today];
   const open = liveRows(s.collections, 'planner_items').filter((r) => r.date === today && !r.done);
+  const due = dueContacts(peopleOf(s.collections), today)[0];
+  const pace = billingPace(s.collections, cfg.monthlyTarget, today);
   const onStreak = !!one?.done && ignored === 0;
   return {
     events,
@@ -48,6 +52,9 @@ export function extrasFrom(s: ReturnType<typeof useStore>['state']): PlanExtras 
         const n = pickNudge({
           role: cfg.role, lang: cfg.nudgeLang, hour, minute, weekday, oneThing: one?.text, oneThingDone: one?.done, openToday: open.length,
           firstPending: open[0] ? String(open[0].title ?? '') : undefined, waterGlasses: waterOn(s.collections, today), waterTarget: cfg.waterTarget,
+          healthGoals: cfg.healthGoals,
+          duePerson: due ? { name: due.person.name.split(' ')[0], days: due.daysSince } : undefined,
+          billing: cfg.role === 'arpan' ? { total: pace.total, target: pace.target, needPerDay: pace.needPerDay, todayEntered: billedOn(s.collections, today) !== null } : undefined,
         });
         return n && { title: n.title, body: n.body, route: n.route };
       },

@@ -20,6 +20,12 @@ export type NudgeCtx = {
   firstPending?: string;
   waterGlasses: number;
   waterTarget: number;
+  /** Priya's chosen health goals (gym first). */
+  healthGoals?: string[];
+  /** Arpan: the person most overdue for a call/dinner, if any. */
+  duePerson?: { name: string; days: number | null };
+  /** Arpan: tentative billing this month against the target. */
+  billing?: { total: number; target: number; needPerDay: number; todayEntered: boolean };
 };
 
 type T = { id: string; slot: Slot; title: L; body: L; route: string };
@@ -36,6 +42,7 @@ export const slotOf = (hour: number): Slot | null => {
   return 'night';
 };
 
+const inrShort = (n: number) => (n >= 10000000 ? `₹${(n / 10000000).toFixed(1).replace(/\.0$/, '')} Cr` : n >= 100000 ? `₹${(n / 100000).toFixed(1).replace(/\.0$/, '')}L` : n >= 1000 ? `₹${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `₹${Math.round(n)}`);
 const short = (s: string | undefined, n = 40) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : (s ?? ''));
 const T = (id: string, slot: Slot, title: L, body: L, route = '/'): T => ({ id, slot, title, body, route });
 
@@ -49,18 +56,24 @@ function arpanPool(c: NudgeCtx, slot: Slot): T[] {
   const pools: Record<Slot, T[]> = {
     morning: [
       T('a-m1', 'morning', { en: 'First task', hi: 'पहला काम' }, c.oneThing && !c.oneThingDone ? { en: `"${one}": first 25 minutes, phone away.`, hi: `"${one}": पहले 25 मिनट, फ़ोन दूर।` } : { en: 'Write today’s One Thing. One line, now.', hi: 'आज का One Thing लिखो। एक पंक्ति, अभी।' }),
-      T('a-m2', 'morning', { en: 'Client / GST', hi: 'क्लाइंट / GST' }, c.firstPending ? { en: `This first: ${short(c.firstPending)}. Rest later.`, hi: `पहले यह: ${short(c.firstPending)}। बाकी बाद में।` } : { en: 'Pick the first client/GST task and give it 25 minutes.', hi: 'पहला क्लाइंट/GST काम चुनो और 25 मिनट दो।' }, '/planner'),
+      T('a-m2', 'morning', { en: 'Client / GST', hi: 'क्लाइंट / GST' }, c.firstPending ? { en: `This first: ${short(c.firstPending)}. Rest later.`, hi: `पहले यह: ${short(c.firstPending)}। बाकी बाद में।` } : { en: 'Which client or GST task comes first today? Add it to your to-dos now.', hi: 'आज पहले कौन सा क्लाइंट या GST काम है? अभी टू-डू में जोड़ो।' }, '/planner'),
       T('a-m3', 'morning', { en: 'Execute', hi: 'अमल करो' }, { en: 'Before motivating others, do your own work. Ship first.', hi: 'दूसरों को प्रेरित करने से पहले अपना काम करो। पहले पूरा करो।' }),
     ],
     afternoon: [
       T('a-a1', 'afternoon', { en: 'Timesheet', hi: 'टाइमशीट' }, { en: 'Today’s time log filled? 2 minutes, now.', hi: 'आज का टाइम लॉग भरा? 2 मिनट, अभी।' }, '/work'),
-      T('a-a2', 'afternoon', { en: 'Billing', hi: 'बिलिंग' }, { en: 'How much billed today? Target is ₹10–50k a day. Raise one invoice.', hi: 'आज कितना बिल किया? लक्ष्य रोज़ ₹10–50 हज़ार। एक इनवॉइस बनाओ।' }, '/work'),
+      T('a-a2', 'afternoon', { en: 'Billing', hi: 'बिलिंग' },
+        c.billing
+          ? { en: `This month ${inrShort(c.billing.total)} of ${inrShort(c.billing.target)}. Need about ${inrShort(c.billing.needPerDay)} a day. ${c.billing.todayEntered ? 'Raise one more invoice.' : 'Enter today’s tentative billing.'}`, hi: `इस महीने ${inrShort(c.billing.total)} / ${inrShort(c.billing.target)}। रोज़ लगभग ${inrShort(c.billing.needPerDay)} चाहिए। ${c.billing.todayEntered ? 'एक और इनवॉइस बनाओ।' : 'आज की संभावित बिलिंग दर्ज करो।'}` }
+          : { en: 'How much billed today? Target is ₹10–50k a day. Raise one invoice.', hi: 'आज कितना बिल किया? लक्ष्य रोज़ ₹10–50 हज़ार। एक इनवॉइस बनाओ।' }, '/'),
       T('a-a3', 'afternoon', { en: 'AI leverage', hi: 'AI का लाभ' }, { en: 'Let AI do the first draft. Your time is for review.', hi: 'पहला ड्राफ़्ट AI से बनवाओ। तुम्हारा समय सिर्फ़ समीक्षा के लिए है।' }, '/mentor'),
       T('a-a4', 'afternoon', { en: 'Next 15 minutes', hi: 'अगले 15 मिनट' }, { en: 'Is this the best use of the next 15 minutes? If not, switch now.', hi: 'क्या अगले 15 मिनट का यही सबसे अच्छा उपयोग है? नहीं, तो अभी बदलो।' }),
     ],
     evening: [
       T('a-e1', 'evening', { en: 'Build something', hi: 'कुछ सार्थक बनाओ' }, { en: '20 minutes on a content post or product idea. Build, don’t scroll.', hi: 'कंटेंट पोस्ट या प्रोडक्ट आइडिया पर 20 मिनट। स्क्रॉल नहीं, निर्माण।' }, '/work'),
-      T('a-e2', 'evening', { en: 'Networking', hi: 'नेटवर्किंग' }, { en: 'Call a friend or client, or plan a dinner meet. Network is net worth.', hi: 'किसी मित्र/क्लाइंट को फ़ोन करो या डिनर प्लान करो। नेटवर्क ही नेटवर्थ है।' }),
+      T('a-e2', 'evening', { en: 'Networking', hi: 'नेटवर्किंग' },
+        c.duePerson
+          ? { en: `${short(c.duePerson.name, 20)}${c.duePerson.days !== null ? `: ${c.duePerson.days} days since you spoke` : ': not contacted yet'}. Call or plan a dinner. It builds a strong career.`, hi: `${short(c.duePerson.name, 20)}${c.duePerson.days !== null ? `: बात किए ${c.duePerson.days} दिन हो गए` : ': अभी तक संपर्क नहीं हुआ'}। कॉल करो या डिनर प्लान करो। इससे मज़बूत करियर बनता है।` }
+          : { en: 'Call a friend or client, or plan a dinner meet. A strong network builds a strong career.', hi: 'किसी मित्र/क्लाइंट को फ़ोन करो या डिनर प्लान करो। मज़बूत नेटवर्क से मज़बूत करियर बनता है।' }, '/work'),
       T('a-e3', 'evening', { en: 'Chanakya’s lesson', hi: 'चाणक्य की सीख' }, { en: 'Time well spent is the real wealth. Today’s work, today.', hi: 'सही उपयोग हुआ समय ही असली धन है। आज का काम आज।' }),
       T('a-e4', 'evening', { en: 'Comerze / AI', hi: 'Comerze / AI' }, c.openToday > 0 ? { en: `${c.openToday} tasks left. Finish one, then build.`, hi: `${c.openToday} काम बाकी। एक पूरा करो, फिर निर्माण।` } : { en: 'Today’s tasks done. Next small step on Comerze or an AI product.', hi: 'आज के काम पूरे। अब Comerze या AI प्रोडक्ट का अगला छोटा कदम।' }, '/work'),
     ],
@@ -74,7 +87,22 @@ function arpanPool(c: NudgeCtx, slot: Slot): T[] {
 // praises first, and teaches "kaam karna nahi, karwana hai". Health lines are honest and gentle: no weight talk, no scare tactics.
 const TAIL: L = { en: 'Discussed with Arpan? Delegating today, or working alone?', hi: 'अर्पण से बात हुई? आज काम करवा रही हो या अकेले कर रही हो?' };
 const withTail = (l: L): L => ({ en: `${l.en} ${TAIL.en}`, hi: `${l.hi} ${TAIL.hi}` });
-function priyaPool(_c: NudgeCtx, slot: Slot): T[] {
+const GOAL_LINE: Record<string, { title: L; body: L }> = {
+  gym: { title: { en: 'Gym time', hi: 'जिम का समय' }, body: { en: 'Go to the gym today, even for 30 minutes. First step: put your shoes on.', hi: 'आज जिम जाओ, 30 मिनट ही सही। पहला कदम: जूते पहन लो।' } },
+  walk: { title: { en: 'Walk', hi: 'सैर' }, body: { en: 'A 20-minute walk now. Fresh air, clear mind.', hi: 'अभी 20 मिनट की सैर। ताज़ी हवा, साफ़ मन।' } },
+  breathing: { title: { en: 'Breathe', hi: 'साँस' }, body: { en: 'Five slow deep breaths now. It lowers stress.', hi: 'अभी पाँच धीमी गहरी साँसें। इससे तनाव कम होता है।' } },
+  yoga: { title: { en: 'Yoga', hi: 'योग' }, body: { en: '15 minutes of yoga or stretching today.', hi: 'आज 15 मिनट योग या स्ट्रेचिंग।' } },
+  eating: { title: { en: 'Healthy plate', hi: 'सेहतमंद थाली' }, body: { en: 'Add one healthy item to your plate today.', hi: 'आज अपनी थाली में एक सेहतमंद चीज़ जोड़ो।' } },
+  sleep: { title: { en: 'Sleep', hi: 'नींद' }, body: { en: 'Sleep on time tonight. Rest is part of the work.', hi: 'आज रात समय पर सोओ। आराम भी काम का हिस्सा है।' } },
+};
+function priyaPool(c: NudgeCtx, slot: Slot): T[] {
+  const goals = c.healthGoals ?? [];
+  // Gym first: if she chose gym it comes ahead of her other goals. With no goal chosen, ask her to choose.
+  const ordered = [...goals].sort((a, b) => (a === 'gym' ? -1 : b === 'gym' ? 1 : 0));
+  const healthLine: T[] = ordered.length
+    ? ordered.filter((g) => GOAL_LINE[g]).map((g) => T(`p-h-${g}`, slot, GOAL_LINE[g].title, withTail(GOAL_LINE[g].body), '/couple'))
+    : [T('p-h-ask', slot, { en: 'Your health goal', hi: 'आपका हेल्थ गोल' }, withTail({ en: 'Tell me your health goal in Settings: gym first, then walking or breathing.', hi: 'सेटिंग्स में अपना हेल्थ गोल बताओ: पहले जिम, फिर सैर या साँस।' }), '/settings')];
+  const client: T = T('p-client', slot, { en: 'Clients first', hi: 'पहले क्लाइंट' }, withTail({ en: 'Hand the routine work over and focus on client satisfaction. Call one client for feedback.', hi: 'रोज़ का काम सौंप दो और क्लाइंट की संतुष्टि पर ध्यान दो। एक क्लाइंट से फ़ीडबैक लो।' }), '/couple');
   const p: Record<Slot, T[]> = {
     morning: [
       T('p-m1', 'morning', { en: 'You are doing well 🌸', hi: 'आप बहुत अच्छा कर रही हो 🌸' }, withTail({ en: 'Hand one task to someone today and check it. Be the manager, not the typewriter.', hi: 'आज एक काम किसी को सौंपो और जाँचो। मैनेजर बनो, टाइपराइटर नहीं।' }), '/couple'),
@@ -91,6 +119,9 @@ function priyaPool(_c: NudgeCtx, slot: Slot): T[] {
     ],
     night: [T('p-n1', 'night', { en: 'Today’s account', hi: 'आज का हिसाब' }, withTail({ en: 'Be proud of what you did well today. Tomorrow we delegate one more task.', hi: 'आज जो अच्छा किया उस पर गर्व करो। कल एक और काम सौंपेंगे।' }), '/couple')],
   };
+  if (slot === 'morning') p.morning.push(...healthLine.slice(0, 2));
+  if (slot === 'afternoon') p.afternoon.push(client);
+  if (slot === 'evening') p.evening.push(...healthLine.slice(0, 1));
   return p[slot];
 }
 

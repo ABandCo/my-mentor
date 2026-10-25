@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CoupleSummary } from '@/components/couple-summary';
 import { IconButton, Pill, ScreenHeader, Segmented } from '@/components/kit';
 import { Button, Card, Chip, EmptyState, SectionTitle, T, tap } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
@@ -34,7 +35,7 @@ export default function Couple() {
         {tab === 'talk' && <TalkTab />}
         {tab === 'rituals' && <RitualsTab />}
         {tab === 'repair' && <RepairTab />}
-        <T variant="caption">No scores, no rankings, no comparisons between the two of you. Only what you each choose to share is ever visible to the other.</T>
+        <T variant="caption">No rankings or comparisons between the two of you. Only what you each choose to share (a daily summary, if you turn it on, and your own posts) is ever visible to the other.</T>
       </ScrollView>
     </SafeAreaView>
   );
@@ -172,6 +173,8 @@ function Linked({ c }: { c: ReturnType<typeof useCouple> }) {
         <IconButton icon="refresh" label="Refresh" onPress={c.refresh} />
       </Card>
       {c.error ? <T variant="body" style={{ color: colors.firmText }}>{c.error}</T> : null}
+
+      <CoupleSummary c={c} />
 
       <Card style={{ gap: 10 }}>
         <SectionTitle title="Gratitude notes" />
