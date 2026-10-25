@@ -1,41 +1,41 @@
-# My Mentor: source code handover (version 1.3.0, 25 Oct 2026)
+# My Mentor: source code handover (version 1.4.0, 25 Oct 2026)
 
-Complete source of the app, the server code and the notes, without build output and without any secret keys.
+Complete source of the app, the server code, the build workflow and the notes. No build output, no private keys.
 
 ## What is inside
 | Folder | What |
 |---|---|
 | `my-mentor/` | The app (React Native with Expo, TypeScript). Run everything from here. |
-| `my-mentor/src/app` | Screens (Home, Habits, Mentor, Grow, Me, Goals, Planner, Communication Lab, Work, Couple, Reports, Settings, Memory, sign-in) |
-| `my-mentor/src/lib` | Logic: store and sync, metrics, habits, goals, push coach, reports, rewards, Communication Lab, business, couple, notifications, voice, AI client and masking |
-| `my-mentor/src/components` | Shared UI |
-| `my-mentor/supabase` | Database migrations (0001 to 0003 plus the keep-alive notes in `docs/LONG_TERM.md`), the `mentor` Edge Function (server side of the AI), SQL security tests |
-| `my-mentor/tests` | 107 unit tests (`npm test`) |
-| `my-mentor/docs` | Architecture, security, costs, test report, progress board, long-term plan, deployment history |
-| `tools/` | Helper scripts used for building (icon generator, build watcher, APK inspector) |
-| `play-store-pack/` | Listing text, Data safety answers, steps, master prompt, graphics, privacy pages |
+| `my-mentor/src/app` | Screens: Today, Habits, Mentor (Krishna), Grow, Me, Goals, Planner, Communication Lab, Work, Couple, Reports, Settings, Memory, sign-in |
+| `my-mentor/src/lib` | Logic. New in 1.4.0: `discipline.ts` (water, wake log, evening check-in, score), `nudges.ts` (Hindi/English nudges for Arpan and Priya, Sunday plan), `wisdom.ts` (Krishna's lessons), `todo.ts` (Now/Next/Later), `billing.ts`, `network.ts`, `pipeline.ts`, `summary.ts`, `calendar.ts`, `push.ts` |
+| `my-mentor/supabase` | Migrations 0001 to 0004, Edge Functions `mentor` (the AI, live version 6) and `nudge` (server nudges), SQL security tests |
+| `my-mentor/tests` | 131 unit tests (`npm test`) |
+| `my-mentor/docs` | Architecture, security, GITHUB_BUILD.md (how to build), GOOGLE_CALENDAR.md, BUILD_AND_PUSH_STEPS.md, progress notes |
+| `.github/workflows/build-apk.yml` | Builds the APK on GitHub (copy this into a repo at `.github/workflows/`) |
+| `play-store-pack/`, `tools/` | Play Store texts and graphics, helper scripts (from 1.3.0) |
 
-## Not included on purpose
-- `node_modules` (run `npm install`), build outputs, the APK and AAB files.
-- Any private key. The Gemini key lives only as a Supabase Edge Function secret named `GEMINI_API_KEY`. The `.env` here holds only the public Supabase address and public (publishable) key.
+## Rebuild the APK (no Expo, no Firebase)
+1. Put this whole folder in a GitHub repo: the app at `source/my-mentor/` and the workflow at `.github/workflows/build-apk.yml` (the workflow expects that path; edit `working-directory` if you move it). Change the branch name in the workflow's `on.push.branches`.
+2. Push. GitHub builds in about 15 minutes (Actions tab). Open the green run, then *Artifacts → My-Mentor-APK*, unzip, install `My-Mentor.apk`.
+3. The signing key is created on the first build and kept in GitHub's private cache (`mm-signing-v2`). If the cache is ever cleared, the next build makes a new key and phones must reinstall.
 
-## To work on it
-Windows note: this project was built from a folder whose path contains "&", so use short paths or call node scripts directly: `node node_modules/typescript/bin/tsc --noEmit`, `node node_modules/expo/bin/cli ...`.
-
+## Work on the code on a computer
 ```bash
 cd my-mentor
 npm install
-npm test                       # 107 tests
+npm test                                   # 131 tests
 node node_modules/typescript/bin/tsc --noEmit
 node node_modules/expo/bin/cli export --platform web --output-dir dist-web   # web build
 ```
+Needs Node 22+. The `.env` here holds only the public Supabase address and public (publishable) key.
 
-Builds run in Expo's cloud (EAS, free tier): profiles in `eas.json`: `preview` (APK, sideload), `play` (AAB for Google Play, targetSdk 36), `play-test-apk`, `emulator-local`. The Expo account and project id are in `app.json`. The signing key is held by Expo.
+## Live backend (Supabase project `soueweipaljxbpupiqed`, Mumbai)
+- Tables with owner-only security: profiles, habits, planner, goals, journal_entries (also stores water, wake, billing, people, pipeline, settings), couples, couple_items, push_devices, push_log and more.
+- Edge Function `mentor` (Gemini key stays only as the secret `GEMINI_API_KEY`), Edge Function `nudge` (runs every 15 minutes through pg_cron; sends only to phones registered for Expo push, so it is dormant without Firebase).
+- After editing `src/lib/nudges.ts`, run `node scripts/sync-nudge-copy.mjs` (a test checks the server copy).
 
-## Key facts for the next developer
-- Offline-first: local store with a sync outbox to Supabase when signed in. No sign-in wall.
-- Backend project: Supabase `soueweipaljxbpupiqed` (Mumbai, free). Tables: owner-only RLS. Couple Space uses two-consent RPCs.
-- AI: only through the `mentor` Edge Function (Gemini). Names, PAN, GSTIN, phone and similar are masked on the phone and again on the server. Modes: chat, plan_day, extract, weekly_review, comm_score, goal_plan, biz_plan.
-- Status and open items are in `my-mentor/docs/PROGRESS.md` and `docs/TEST_REPORT.md`. Open at handover: the live Gemini key was still being fixed ("API key not valid"), phone install test of 1.3.0, Google Play account and review.
-- Live addresses: web app and APK at https://abandco.github.io/my-mentor/ (GitHub repo ABandCo/my-mentor holds the built site only).
-- Business CRM (leads, pipeline, fees) was deliberately left out; it is planned as a separate app.
+## Key facts
+- Offline-first: data is on the phone and syncs to Supabase when signed in.
+- Roles: each phone picks Arpan or Priya in Settings → Discipline & nudges (language Hindi / English / Both). Priya's nudges always name Arpan and ask the two questions; the tests enforce it.
+- Nudges without Firebase are scheduled on the phone for 3 days after each open.
+- Not done: Google Calendar needs a Google Cloud OAuth client (docs/GOOGLE_CALENDAR.md); server push needs Firebase (docs/BUILD_AND_PUSH_STEPS.md Part B); the website at abandco.github.io/my-mentor is still the older web build.
