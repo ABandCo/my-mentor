@@ -1,47 +1,79 @@
-# One-click Android build for My Mentor. Run it from GitHub: Actions tab -> "Build Android APK" -> Run workflow.
-# It builds on Expo's servers, waits for the result, and attaches the finished file to the run as a download
-# named "My-Mentor-APK" (open the finished run and scroll to "Artifacts"). Takes about 15-30 minutes.
-# One-time setup: add a repository secret named EXPO_TOKEN (steps in source/my-mentor/docs/BUILD_AND_PUSH_STEPS.md).
+# Builds the My Mentor Android APK on GitHub (no Expo or Firebase account). The finished file is attached to the run as
+# the download "My-Mentor-APK". Nothing is published on a public page.
+# Runs when app code on the working branch changes, or by hand: Actions -> Build Android APK -> Run workflow.
 name: Build Android APK
 on:
+  push:
+    branches: [claude/intelligent-shannon-d5ge7d]
+    paths: ['source/my-mentor/**', '.github/workflows/build-apk.yml']
   workflow_dispatch:
-    inputs:
-      profile:
-        description: 'EAS build profile (preview = APK you can install; play = Play Store bundle)'
-        default: preview
-        type: choice
-        options: [preview, play, play-test-apk]
+permissions:
+  contents: read
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: source/my-mentor
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://soueweipaljxbpupiqed.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_3QHNd8datfSwJMMw-IiZpg_YcC8CgRc
+      MM_TARGET_SDK: '34'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Check the secret exists
-        run: test -n "$EXPO_TOKEN" || (echo "EXPO_TOKEN secret is missing. See docs/BUILD_AND_PUSH_STEPS.md" && exit 1)
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          cache: npm
+          cache-dependency-path: source/my-mentor/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
       - run: npm ci
       - run: npm test
-      - name: Build on Expo and wait for it
-        run: npx --yes eas-cli@latest build --platform android --profile "${{ inputs.profile }}" --non-interactive --wait --json > build.json
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      - name: Download the finished file
+      - name: Create the Android project
+        run: npx expo prebuild --platform android --clean --no-install
+
+      # The signing key lives only in GitHub's private build cache (never in the repo). Same key = the app can update in place.
+      - name: Restore the signing key
+        id: key
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mm-signing
+          key: mm-signing-v1
+      - name: Create a signing key (first build only)
+        if: steps.key.outputs.cache-hit != 'true'
         run: |
-          URL=$(node -e "const b=JSON.parse(require('fs').readFileSync('build.json','utf8'));const x=Array.isArray(b)?b[0]:b;console.log((x.artifacts&&x.artifacts.buildUrl)||'')")
-          if [ -z "$URL" ]; then echo "Build did not produce a file:"; cat build.json; exit 1; fi
-          EXT=apk; [ "${{ inputs.profile }}" = "play" ] && EXT=aab
-          mkdir -p out && curl -fL -o "out/My-Mentor.$EXT" "$URL"
+          mkdir -p "$RUNNER_TEMP/mm-signing"
+          PASS=$(openssl rand -hex 16)
+          echo "$PASS" > "$RUNNER_TEMP/mm-signing/pass"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/mm-signing/release.keystore" -storetype PKCS12 -alias mymentor \
+            -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=My Mentor, O=Arpan Bohra and Co, C=IN"
+      - name: Use the signing key
+        run: |
+          echo "MM_KEYSTORE=$RUNNER_TEMP/mm-signing/release.keystore" >> "$GITHUB_ENV"
+          echo "MM_KEYSTORE_PASSWORD=$(cat "$RUNNER_TEMP/mm-signing/pass")" >> "$GITHUB_ENV"
+          echo "MM_KEY_ALIAS=mymentor" >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        working-directory: source/my-mentor/android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+      - name: Check the file
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          mkdir -p out && cp "$APK" out/My-Mentor.apk
           ls -l out
+          BT=$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          $BT/apksigner verify --verbose out/My-Mentor.apk | head -8
+          $BT/aapt2 dump badging out/My-Mentor.apk | grep -E "^package|sdkVersion|targetSdk" | head -4
       - uses: actions/upload-artifact@v4
         with:
           name: My-Mentor-APK
-          path: source/my-mentor/out/*
+          path: source/my-mentor/out/My-Mentor.apk
           retention-days: 30
