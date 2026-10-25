@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "eas-cli": "^25.1.1",
+    "qrcode": "^1.5.4"
+  }
+}

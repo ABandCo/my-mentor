@@ -1,0 +1,53 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://soueweipaljxbpupiqed.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_3QHNd8datfSwJMMw-IiZpg_YcC8CgRc"
+      }
+    },
+    "play": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "MM_TARGET_SDK": "36",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://soueweipaljxbpupiqed.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_3QHNd8datfSwJMMw-IiZpg_YcC8CgRc"
+      }
+    },
+    "play-test-apk": {
+      "distribution": "internal",
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "MM_TARGET_SDK": "36",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://soueweipaljxbpupiqed.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_3QHNd8datfSwJMMw-IiZpg_YcC8CgRc"
+      }
+    },
+    "emulator-local": {
+      "distribution": "internal",
+      "channel": "emulator",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "MM_ALL_ABIS": "1",
+        "EXPO_PUBLIC_LOCAL_ONLY": "1"
+      }
+    }
+  }
+}
