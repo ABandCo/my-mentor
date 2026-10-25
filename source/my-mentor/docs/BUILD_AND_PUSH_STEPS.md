@@ -2,7 +2,15 @@
 
 Everything here is click-by-click. You do each part once. Nothing here needs coding.
 
-## Part A. Make the new app file (APK), about 10 minutes of your time
+## Quick path: get the APK first (3 steps, no Firebase needed)
+
+1. expo.dev → profile picture → **Access tokens → Create token** (name `github`) → copy it.
+2. github.com/ABandCo/my-mentor → **Settings → Secrets and variables → Actions → New repository secret** → name `EXPO_TOKEN`, value = the token.
+3. **Actions → Build Android APK → Run workflow** (branch `claude/intelligent-shannon-d5ge7d`, profile `preview`). After 15 to 30 minutes open the finished run and download **My-Mentor-APK** under *Artifacts*. That zip contains `My-Mentor.apk`. Install it on your phone.
+
+The app works fully with this APK. Nudges are then sent from the phone itself. Do Part B later, then run the workflow again, to make nudges arrive from the server even when the app is not opened.
+
+## Part A. Make the new app file (APK), about 10 minutes of your time (details of the quick path)
 
 1. Open https://expo.dev and sign in (your account is **arpan25**, project **my-mentor**).
 2. Click your **profile picture → Access tokens → Create token**. Name it `github`. Copy the token (it is shown once).

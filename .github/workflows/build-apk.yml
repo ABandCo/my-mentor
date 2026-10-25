@@ -1,5 +1,6 @@
 # One-click Android build for My Mentor. Run it from GitHub: Actions tab -> "Build Android APK" -> Run workflow.
-# It sends the build to Expo's servers; the finished APK link appears on https://expo.dev (your project "my-mentor").
+# It builds on Expo's servers, waits for the result, and attaches the finished file to the run as a download
+# named "My-Mentor-APK" (open the finished run and scroll to "Artifacts"). Takes about 15-30 minutes.
 # One-time setup: add a repository secret named EXPO_TOKEN (steps in source/my-mentor/docs/BUILD_AND_PUSH_STEPS.md).
 name: Build Android APK
 on:
@@ -13,6 +14,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: source/my-mentor
@@ -27,7 +29,19 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
       - run: npm test
-      - name: Start the cloud build
-        run: npx --yes eas-cli@latest build --platform android --profile "${{ inputs.profile }}" --non-interactive --no-wait
+      - name: Build on Expo and wait for it
+        run: npx --yes eas-cli@latest build --platform android --profile "${{ inputs.profile }}" --non-interactive --wait --json > build.json
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: Download the finished file
+        run: |
+          URL=$(node -e "const b=JSON.parse(require('fs').readFileSync('build.json','utf8'));const x=Array.isArray(b)?b[0]:b;console.log((x.artifacts&&x.artifacts.buildUrl)||'')")
+          if [ -z "$URL" ]; then echo "Build did not produce a file:"; cat build.json; exit 1; fi
+          EXT=apk; [ "${{ inputs.profile }}" = "play" ] && EXT=aab
+          mkdir -p out && curl -fL -o "out/My-Mentor.$EXT" "$URL"
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: My-Mentor-APK
+          path: source/my-mentor/out/*
+          retention-days: 30
