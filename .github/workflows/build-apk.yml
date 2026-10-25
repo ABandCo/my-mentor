@@ -45,12 +45,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/mm-signing
-          key: mm-signing-v1
+          key: mm-signing-v2
       - name: Create a signing key (first build only)
         if: steps.key.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/mm-signing"
           PASS=$(openssl rand -hex 16)
+          echo "::add-mask::$PASS"
           echo "$PASS" > "$RUNNER_TEMP/mm-signing/pass"
           keytool -genkeypair -keystore "$RUNNER_TEMP/mm-signing/release.keystore" -storetype PKCS12 -alias mymentor \
             -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
@@ -58,7 +59,9 @@ jobs:
       - name: Use the signing key
         run: |
           echo "MM_KEYSTORE=$RUNNER_TEMP/mm-signing/release.keystore" >> "$GITHUB_ENV"
-          echo "MM_KEYSTORE_PASSWORD=$(cat "$RUNNER_TEMP/mm-signing/pass")" >> "$GITHUB_ENV"
+          PASS=$(cat "$RUNNER_TEMP/mm-signing/pass")
+          echo "::add-mask::$PASS"
+          echo "MM_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
           echo "MM_KEY_ALIAS=mymentor" >> "$GITHUB_ENV"
 
       - name: Build the APK
