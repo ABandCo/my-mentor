@@ -67,14 +67,25 @@ jobs:
       - name: Build the APK
         working-directory: source/my-mentor/android
         run: ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+      # Some phone installers (seen on a OnePlus) reject an APK signed with the newer v2 scheme only. Android's build tools
+      # drop the older v1 signature automatically, so we align the file and sign it again with v1 + v2, using the same key.
+      - name: Align and sign again (v1 + v2)
+        run: |
+          BT=$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          mkdir -p out
+          $BT/zipalign -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          $BT/apksigner sign --ks "$MM_KEYSTORE" --ks-pass env:MM_KEYSTORE_PASSWORD --ks-key-alias "$MM_KEY_ALIAS" --key-pass env:MM_KEYSTORE_PASSWORD \
+            --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled false --min-sdk-version 21 \
+            --out out/My-Mentor.apk "$RUNNER_TEMP/aligned.apk"
       - name: Check the file
         run: |
-          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
-          mkdir -p out && cp "$APK" out/My-Mentor.apk
-          ls -l out
           BT=$ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          ls -l out
+          $BT/zipalign -c -P 16 4 out/My-Mentor.apk && echo "alignment ok" || $BT/zipalign -c 4 out/My-Mentor.apk && echo "alignment ok (4)"
           $BT/apksigner verify --verbose out/My-Mentor.apk | head -8
-          $BT/aapt2 dump badging out/My-Mentor.apk | grep -E "^package|sdkVersion|targetSdk" | head -4
+          $BT/aapt2 dump badging out/My-Mentor.apk | grep -E "^package|^sdkVersion|^targetSdkVersion|^native-code|^compileSdk" | head -6
+          unzip -tq out/My-Mentor.apk
       - uses: actions/upload-artifact@v4
         with:
           name: My-Mentor-APK
